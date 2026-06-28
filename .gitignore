@@ -1,0 +1,42 @@
+# Visual Studio Git Ignore Template
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Log]/
+
+# Visual Studio cache and settings
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.shellcompat
+*.suo
+*.suo.tmp
+
+# Backup and temporary files
+*~
+*.bak
+*.tmp
+*.log
+
+# NuGet Packages
+*.nupkg
+# The packages folder can be ignored because of Package Restore
+**/packages/*
+# except build/, which is used as an MSBuild target.
+!**/packages/build/
+# If using NuGet Legacy Formats
+node_modules/
+
+# OS-specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini

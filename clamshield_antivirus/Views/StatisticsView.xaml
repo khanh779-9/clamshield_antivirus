@@ -1,0 +1,172 @@
+<UserControl x:Class="clamshield_antivirus.Views.StatisticsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
+             xmlns:conv="clr-namespace:clamshield_antivirus.Converters"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="700"
+             d:DataContext="{d:DesignInstance Type=vm:StatisticsViewModel}">
+
+    <UserControl.Resources>
+        <conv:TimeframeEqualsConverter x:Key="TimeframeEqualsConverter"/>
+        
+        <Style x:Key="TimeframeTabStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="5"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{StaticResource CardBgBrush}"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Section -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Statistics Dashboard" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="Monitor scanning activity and system threat metrics" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="⟳ Refresh" Style="{StaticResource SecondaryButton}" 
+                    Command="{Binding RefreshCommand}" IsEnabled="{Binding IsLoading, Converter={StaticResource InvBool}}"
+                    VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Protection status card -->
+        <Border Grid.Row="1" CornerRadius="12" Padding="20" Margin="0,0,0,20" BorderThickness="1"
+                Background="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}, ConverterParameter='card_bg'}"
+                BorderBrush="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <!-- Shield status character icon -->
+                <TextBlock Grid.Column="0" Text="🛡️" FontSize="42" VerticalAlignment="Center" Margin="0,0,20,0"/>
+                
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="SYSTEM PROTECTION STATUS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Opacity="0.8"/>
+                    <TextBlock Text="{Binding ProtectionStatusText}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}" Margin="0,4,0,0"/>
+                    <TextBlock Text="Real-time status based on ClamAV logs and quarantined files database." FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Timeframe selector toggle row -->
+        <Grid Grid.Row="2" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="Protection Overview" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+
+            <!-- Horizontal Toggle Selection -->
+            <Border Grid.Column="1" Background="{StaticResource SidebarBgBrush}" CornerRadius="8" Padding="3" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}">
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Daily" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Daily', Mode=TwoWay}"/>
+                    <RadioButton Content="Weekly" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Weekly', Mode=TwoWay}"/>
+                    <RadioButton Content="Monthly" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Monthly', Mode=TwoWay}"/>
+                    <RadioButton Content="All Time" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='All Time', Mode=TwoWay}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Grid Cards of stats -->
+        <UniformGrid Grid.Row="3" Columns="2" Rows="2">
+            <!-- Total Scans Card -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,8,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="🔍 TOTAL SCANS RUN" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding TotalScans}" FontSize="36" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Text="Operations completed successfully" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                </Grid>
+            </Border>
+
+            <!-- Files Scanned Card -->
+            <Border Style="{StaticResource CardStyle}" Margin="8,0,0,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="📄 FILES SCANNED" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding FilesScanned, StringFormat='{}{0:N0}'}" FontSize="36" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Text="Individual items inspected" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                </Grid>
+            </Border>
+
+            <!-- Threats Detected Card -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,8,8,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="⚠️ THREATS DETECTED" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding ThreatsDetected}" FontSize="36" FontWeight="Bold" 
+                               Foreground="{Binding ThreatsDetected, Converter={StaticResource StatusToColor}, ConverterParameter='infected'}" 
+                               VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Text="Identified malware threats isolated" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                </Grid>
+            </Border>
+
+            <!-- Avg Duration Card -->
+            <Border Style="{StaticResource CardStyle}" Margin="8,8,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="⏱️ AVERAGE SCAN TIME" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="1" Text="{Binding AvgDurationText}" FontSize="36" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Text="Minutes &amp; seconds per operation" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                </Grid>
+            </Border>
+        </UniformGrid>
+    </Grid>
+</UserControl>

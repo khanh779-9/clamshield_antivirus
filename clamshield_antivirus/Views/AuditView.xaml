@@ -1,0 +1,136 @@
+<UserControl x:Class="clamshield_antivirus.Views.AuditView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
+             xmlns:local="clr-namespace:clamshield_antivirus.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="700"
+             d:DataContext="{d:DesignInstance Type=vm:AuditViewModel}">
+
+    <UserControl.Resources>
+        <local:IssuesToColorConverter x:Key="IssuesToColorConverter"/>
+        <local:IssuesToIconConverter x:Key="IssuesToIconConverter"/>
+        <local:AuditWarningToVisConverter x:Key="AuditWarningToVisConverter"/>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Title Section -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="System Security Audit" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="Check your Windows system security posture and get recommendations" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="⟳ Re-run Audit" Style="{StaticResource SecondaryButton}" 
+                    Command="{Binding RunAuditCommand}" IsEnabled="{Binding IsAuditing, Converter={StaticResource InvBool}}"
+                    VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Summary Banner -->
+        <Border Grid.Row="1" CornerRadius="12" Padding="16" Margin="0,0,0,20"
+                Background="{Binding HasIssues, Converter={StaticResource IssuesToColorConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding HasIssues, Converter={StaticResource IssuesToIconConverter}}" FontSize="28" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SummaryText}" FontSize="15" FontWeight="Bold" Foreground="Black"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Audit Checks List -->
+        <ListBox Grid.Row="2" ItemsSource="{Binding AuditItems}"
+                 Background="Transparent" BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Margin" Value="0,0,0,12"/>
+                    <Setter Property="Focusable" Value="False"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                                <ContentPresenter/>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:AuditItem}">
+                    <Border Style="{StaticResource CardStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Check state icon -->
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Status, Converter={StaticResource StatusToIcon}}" 
+                                       Foreground="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}" 
+                                       FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+
+                            <!-- Main details -->
+                            <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" FontSize="14"/>
+                                <TextBlock Text="{Binding Description}" Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Status Badge -->
+                            <Border Grid.Row="0" Grid.Column="2" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderThickness="1"
+                                    Background="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_bg'}"
+                                    BorderBrush="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
+                                <TextBlock Text="{Binding Status}" FontSize="10" FontWeight="Bold" 
+                                           Foreground="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}"/>
+                            </Border>
+
+                            <!-- Suggestion details (Appears if warning/fail) -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                                        Visibility="{Binding Status, Converter={StaticResource AuditWarningToVisConverter}}">
+                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,8"/>
+                                <TextBlock Text="{Binding Suggestion}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Fix Command Terminal Box -->
+                            <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                                  Visibility="{Binding FixCommand, Converter={StaticResource StringToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0" Text="{Binding FixCommand, Mode=OneWay}" 
+                                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                         Background="{StaticResource SidebarBgBrush}" Foreground="{StaticResource PrimaryTextBrush}"
+                                         Padding="10,6" IsReadOnly="True" BorderThickness="1,1,0,1"/>
+                                <Button Grid.Column="1" Content="📋 Copy Command" Style="{StaticResource SecondaryButton}" 
+                                        Padding="12,6" BorderThickness="0,1,1,1"
+                                        Click="CopyCommand_Click" CommandParameter="{Binding FixCommand}"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</UserControl>
