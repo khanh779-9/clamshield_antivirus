@@ -115,7 +115,26 @@ public class GapConstraint
 
 public class AltConstraint
 {
-    public byte[][] Alternatives = Array.Empty<byte[]>();
+    public ParsedPattern[] Alternatives = Array.Empty<ParsedPattern>();
+}
+
+public class NegatedAltConstraint
+{
+    public ParsedPattern[] Alternatives = Array.Empty<ParsedPattern>();
+}
+
+public class CdbSignature
+{
+    public string Name { get; set; } = string.Empty;
+    public string ContainerType { get; set; } = string.Empty;
+    public string ContainerSize { get; set; } = string.Empty;
+    public string FileNameRegex { get; set; } = string.Empty;
+    public string FileSizeInContainer { get; set; } = string.Empty;
+    public string FileSizeReal { get; set; } = string.Empty;
+    public string IsEncrypted { get; set; } = string.Empty;
+    public string FilePos { get; set; } = string.Empty;
+    public string Res1 { get; set; } = string.Empty;
+    public string Res2 { get; set; } = string.Empty;
 }
 
 public class ParsedPattern
@@ -172,19 +191,24 @@ public static class PatternCache
                     continue;
                 }
                 var alts = altGroup.Split('|');
-                var altBytes = new List<byte[]>();
+                var altPatterns = new List<ParsedPattern>();
                 foreach (var alt in alts)
                 {
                     var trimmed = alt.Trim();
                     if (trimmed.Length > 0)
                     {
-                        var parsedAlt = ParseHexOnly(trimmed);
-                        if (parsedAlt != null && parsedAlt.Length > 0)
-                            altBytes.Add(parsedAlt);
+                        var parsedAlt = ParseMiniPattern(trimmed);
+                        if (parsedAlt.Elements.Count > 0)
+                            altPatterns.Add(parsedAlt);
                     }
                 }
-                if (altBytes.Count > 0 && !negate)
-                    result.Elements.Add(new AltConstraint { Alternatives = altBytes.ToArray() });
+                if (altPatterns.Count > 0)
+                {
+                    if (negate)
+                        result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
+                    else
+                        result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
+                }
                 i = end + 1;
             }
             else if (hexStr[i] == '{')
@@ -283,6 +307,83 @@ public static class PatternCache
         if (c >= 'a' && c <= 'f') return c - 'a' + 10;
         if (c >= 'A' && c <= 'F') return c - 'A' + 10;
         return null;
+    }
+
+    private static ParsedPattern ParseMiniPattern(string hex)
+    {
+        var result = new ParsedPattern();
+        int i = 0;
+        while (i < hex.Length)
+        {
+            if (hex[i] == '(')
+            {
+                int end = hex.IndexOf(')', i);
+                if (end < 0) break;
+                string altGroup = hex.Substring(i + 1, end - i - 1);
+                bool negate = altGroup.StartsWith('!');
+                if (negate) altGroup = altGroup.Substring(1);
+                
+                var alts = altGroup.Split('|');
+                var altPatterns = new List<ParsedPattern>();
+                foreach (var alt in alts)
+                {
+                    var trimmed = alt.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        var parsedAlt = ParseMiniPattern(trimmed);
+                        if (parsedAlt.Elements.Count > 0)
+                            altPatterns.Add(parsedAlt);
+                    }
+                }
+                if (altPatterns.Count > 0)
+                {
+                    if (negate)
+                        result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
+                    else
+                        result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
+                }
+                i = end + 1;
+            }
+            else if (hex[i] == '{')
+            {
+                int end = hex.IndexOf('}', i);
+                if (end < 0) break;
+                string range = hex.Substring(i + 1, end - i - 1);
+                ParseRangeSt(range, out int min, out int max);
+                result.Elements.Add(new GapConstraint { Min = min, Max = max });
+                i = end + 1;
+            }
+            else if (hex[i] == '[')
+            {
+                int end = hex.IndexOf(']', i);
+                if (end < 0) break;
+                string range = hex.Substring(i + 1, end - i - 1);
+                if (range.Contains('-'))
+                {
+                    var parts2 = range.Split('-');
+                    int min2 = 0, max2 = 0;
+                    int.TryParse(parts2[0].Trim(), out min2);
+                    int.TryParse(parts2[1].Trim(), out max2);
+                    if (max2 >= min2)
+                        result.Elements.Add(new GapConstraint { Min = min2, Max = max2 });
+                }
+                i = end + 1;
+            }
+            else if (IsHexOrWildcardSt(hex[i]))
+            {
+                if (i + 1 < hex.Length && IsHexOrWildcardSt(hex[i + 1]))
+                {
+                    int? high = CharToNibbleSt(hex[i]);
+                    int? low = CharToNibbleSt(hex[i + 1]);
+                    result.Elements.Add(new HexConstraint { HighNibble = high, LowNibble = low });
+                    result.HasWildcards = result.HasWildcards || !high.HasValue || !low.HasValue;
+                    i += 2;
+                }
+                else { i++; }
+            }
+            else { i++; }
+        }
+        return result;
     }
 
     private static byte[]? ParseHexOnly(string hex)
@@ -387,14 +488,96 @@ public static class PatternCache
         {
             foreach (var a in alt.Alternatives)
             {
-                if (di + a.Length > data.Length) continue;
-                bool match = true;
-                for (int j = 0; j < a.Length; j++)
-                    if (data[di + j] != a[j]) { match = false; break; }
-                if (match && MatchElements(elements, ei + 1, data, di + a.Length))
-                    return true;
+                int altDi = di;
+                if (MatchElementsInner(a.Elements, 0, data, ref altDi))
+                {
+                    if (MatchElements(elements, ei + 1, data, altDi))
+                        return true;
+                }
             }
             return false;
+        }
+        if (el is NegatedAltConstraint neg)
+        {
+            if (di >= data.Length) return false;
+            int altLen = neg.Alternatives.Length > 0 ? neg.Alternatives[0].Elements.Count : 1;
+            bool matchesAny = false;
+            foreach (var a in neg.Alternatives)
+            {
+                int altDi = di;
+                if (MatchElementsInner(a.Elements, 0, data, ref altDi))
+                {
+                    matchesAny = true;
+                    break;
+                }
+            }
+            if (matchesAny) return false;
+            return MatchElements(elements, ei + 1, data, di + altLen);
+        }
+        return false;
+    }
+
+    private static bool MatchElementsInner(List<object> elements, int ei, byte[] data, ref int di)
+    {
+        if (ei == elements.Count) return true;
+        if (di > data.Length) return false;
+
+        var el = elements[ei];
+        if (el is HexConstraint hc)
+        {
+            if (di >= data.Length) return false;
+            byte b = data[di];
+            int hi = (b >> 4) & 0xF;
+            int lo = b & 0xF;
+            if (hc.HighNibble.HasValue && hc.HighNibble.Value != hi) return false;
+            if (hc.LowNibble.HasValue && hc.LowNibble.Value != lo) return false;
+            di++;
+            return MatchElementsInner(elements, ei + 1, data, ref di);
+        }
+        if (el is GapConstraint gap)
+        {
+            int max = gap.Max < 0 ? data.Length - di : Math.Min(gap.Max, data.Length - di);
+            if (gap.Min > max) return false;
+            int savedDi = di;
+            for (int skip = gap.Min; skip <= max; skip++)
+            {
+                di = savedDi + skip;
+                if (MatchElementsInner(elements, ei + 1, data, ref di))
+                    return true;
+            }
+            di = savedDi;
+            return false;
+        }
+        if (el is AltConstraint alt)
+        {
+            foreach (var a in alt.Alternatives)
+            {
+                int altDi = di;
+                if (MatchElementsInner(a.Elements, 0, data, ref altDi))
+                {
+                    di = altDi;
+                    return MatchElementsInner(elements, ei + 1, data, ref di);
+                }
+            }
+            return false;
+        }
+        if (el is NegatedAltConstraint neg)
+        {
+            if (di >= data.Length) return false;
+            int altLen = neg.Alternatives.Length > 0 ? neg.Alternatives[0].Elements.Count : 1;
+            bool matchesAny = false;
+            foreach (var a in neg.Alternatives)
+            {
+                int altDi = di;
+                if (MatchElementsInner(a.Elements, 0, data, ref altDi))
+                {
+                    matchesAny = true;
+                    break;
+                }
+            }
+            if (matchesAny) return false;
+            di += altLen;
+            return MatchElementsInner(elements, ei + 1, data, ref di);
         }
         return false;
     }
@@ -431,7 +614,8 @@ public static class ExpressionEvaluator
             if (pos < expr.Length && expr[pos] == '|')
             {
                 pos++;
-                value = value || ParseAnd(expr, ref pos, counts);
+                bool right = ParseAnd(expr, ref pos, counts);
+                value = value | right;
             }
             else break;
         }
@@ -447,7 +631,8 @@ public static class ExpressionEvaluator
             if (pos < expr.Length && expr[pos] == '&')
             {
                 pos++;
-                value = value && ParsePrimary(expr, ref pos, counts);
+                bool right = ParsePrimary(expr, ref pos, counts);
+                value = value & right;
             }
             else break;
         }
@@ -577,6 +762,7 @@ public class StoredPattern
     public NdbOffsetType OffsetType { get; set; } = NdbOffsetType.Any;
     public int OffsetValue { get; set; }
     public int MaxShift { get; set; } = -1;
+    public int SectionIndex { get; set; }
     public int MinOffset { get; set; }
     public int MaxOffset { get; set; } = -1;
     public ParsedPattern Parsed { get; set; } = new();
@@ -589,8 +775,12 @@ public class ClamAvEngine
     private readonly Dictionary<Hash160, string> _sha1Signatures = new();
     private readonly Dictionary<Hash128, string> _sectionMd5Signatures = new();
     private readonly Dictionary<Hash256, string> _sectionSha256Signatures = new();
+    private readonly Dictionary<Hash128, (int Size, string Name)> _importHashSignatures = new();
     private readonly List<StoredPattern> _storedPatterns = new();
+    private readonly Dictionary<uint, List<StoredPattern>> _patternsByTarget = new();
+    private readonly List<StoredPattern> _type0Patterns = new();
     private readonly List<LdbSignature> _ldbSignatures = new();
+    private readonly List<CdbSignature> _cdbSignatures = new();
     private readonly HashSet<string> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
@@ -624,7 +814,7 @@ public class ClamAvEngine
             "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
 
         var eicarParsed = PatternCache.GetOrParse(ConvertToHexString(eicarPattern));
-        _storedPatterns.Add(new StoredPattern
+        AddStoredPattern(new StoredPattern
         {
             Name = "Eicar-Test-Signature",
             Parsed = eicarParsed
@@ -647,7 +837,11 @@ public class ClamAvEngine
             _sectionMd5Signatures.Clear();
             _sectionSha256Signatures.Clear();
             _storedPatterns.Clear();
+            _patternsByTarget.Clear();
+            _type0Patterns.Clear();
+            _importHashSignatures.Clear();
             _ldbSignatures.Clear();
+            _cdbSignatures.Clear();
             _fpHashes.Clear();
             _ignoredSigs.Clear();
             _acEngine.Clear();
@@ -716,6 +910,7 @@ public class ClamAvEngine
             ".sha256" => LoadHashSignature(line, HashType.SHA256),
             ".db" => LoadOldFormatSignature(line),
             ".cdb" => LoadCdbSignature(line),
+            ".imp" => LoadImportHashSignature(line),
             _ => 0
         };
     }
@@ -727,8 +922,29 @@ public class ClamAvEngine
         var parts = line.Split(':');
         if (parts.Length < 2) return 0;
 
-        string hash = parts[0].Trim();
-        string name = parts[parts.Length - 1].Trim();
+        string hash;
+        string name;
+
+        if (isSectionHash && parts.Length >= 3)
+        {
+            hash = parts[1].Trim();
+            name = Intern(parts[2].Trim());
+        }
+        else if (parts.Length == 2)
+        {
+            hash = parts[0].Trim();
+            name = Intern(parts[1].Trim());
+        }
+        else if (parts.Length == 4)
+        {
+            hash = parts[0].Trim();
+            name = Intern(parts[2].Trim());
+        }
+        else
+        {
+            hash = parts[0].Trim();
+            name = Intern(parts[^1].Trim());
+        }
 
         int expectedLen = hashType switch
         {
@@ -738,9 +954,8 @@ public class ClamAvEngine
             _ => 0
         };
 
-        if (hash.Length == expectedLen && !string.IsNullOrEmpty(name))
+        if (expectedLen > 0 && hash.Length == expectedLen && !string.IsNullOrEmpty(name))
         {
-            name = Intern(name);
             if (isSectionHash)
             {
                 if (hashType == HashType.MD5)
@@ -762,6 +977,23 @@ public class ClamAvEngine
         return 0;
     }
 
+    private int LoadImportHashSignature(string line)
+    {
+        var parts = line.Split(':');
+        if (parts.Length < 3) return 0;
+
+        string hashStr = parts[0].Trim();
+        string sizeStr = parts[1].Trim();
+        string name = Intern(parts[2].Trim());
+
+        if (hashStr.Length == 32 && int.TryParse(sizeStr, out int size))
+        {
+            _importHashSignatures[Hash128.Parse(hashStr)] = (size, name);
+            return 1;
+        }
+        return 0;
+    }
+
     private int LoadNdbSignature(string line)
     {
         var parts = line.Split(':');
@@ -778,7 +1010,7 @@ public class ClamAvEngine
         var parsed = PatternCache.GetOrParse(hexPatternStr);
         if (parsed.Elements.Count == 0) return 0;
 
-        var offType = ParseOffset(offset, out var offVal, out var maxShift, out var minOff, out var maxOff);
+        var offType = ParseOffset(offset, out var offVal, out var maxShift, out var minOff, out var maxOff, out var secIdx);
 
         if (!parsed.HasWildcards && offType == NdbOffsetType.Any && parsed.PrefixBytes != null)
         {
@@ -786,7 +1018,7 @@ public class ClamAvEngine
         }
         else
         {
-            _storedPatterns.Add(new StoredPattern
+            AddStoredPattern(new StoredPattern
             {
                 Name = name,
                 TargetType = targetType,
@@ -795,6 +1027,7 @@ public class ClamAvEngine
                 MaxShift = maxShift,
                 MinOffset = minOff,
                 MaxOffset = maxOff,
+                SectionIndex = secIdx,
                 Parsed = parsed
             });
         }
@@ -850,7 +1083,14 @@ public class ClamAvEngine
         var subPatterns = new List<ParsedPattern>();
         for (int i = 3; i < parts.Length; i++)
         {
-            string hexPart = parts[i].Trim();
+            string rawPart = parts[i].Trim();
+
+            // Strip subsignature modifiers like ::i, ::w, ::f (not supported yet)
+            int modIdx = rawPart.IndexOf("::", StringComparison.Ordinal);
+            if (modIdx >= 0)
+                rawPart = rawPart.Substring(0, modIdx);
+
+            string hexPart = rawPart;
             if (hexPart.Contains(':'))
             {
                 var offsetParts = hexPart.Split(':');
@@ -883,10 +1123,26 @@ public class ClamAvEngine
     private int LoadCdbSignature(string line)
     {
         var parts = line.Split(':');
-        if (parts.Length < 5) return 0;
+        if (parts.Length < 10) return 0;
 
-        string name = Intern(parts[0].Trim());
-        _acEngine.AddPattern(Encoding.ASCII.GetBytes(name), name);
+        var sig = new CdbSignature
+        {
+            Name = Intern(parts[0].Trim()),
+            ContainerType = parts[1].Trim(),
+            ContainerSize = parts[2].Trim(),
+            FileNameRegex = parts[3].Trim(),
+            FileSizeInContainer = parts[4].Trim(),
+            FileSizeReal = parts[5].Trim(),
+            IsEncrypted = parts[6].Trim(),
+            FilePos = parts[7].Trim(),
+            Res1 = parts[8].Trim(),
+            Res2 = parts[9].Trim()
+        };
+
+        lock (_cdbSignatures)
+        {
+            _cdbSignatures.Add(sig);
+        }
         return 1;
     }
 
@@ -933,7 +1189,7 @@ public class ClamAvEngine
             _acEngine.AddPattern(parsed.PrefixBytes, name);
         else
         {
-            _storedPatterns.Add(new StoredPattern
+            AddStoredPattern(new StoredPattern
             {
                 Name = name,
                 Parsed = parsed
@@ -942,12 +1198,13 @@ public class ClamAvEngine
         return 1;
     }
 
-    private static NdbOffsetType ParseOffset(string offsetStr, out int offsetValue, out int maxShift, out int minOffset, out int maxOffset)
+    private static NdbOffsetType ParseOffset(string offsetStr, out int offsetValue, out int maxShift, out int minOffset, out int maxOffset, out int sectionIndex)
     {
         offsetValue = 0;
         maxShift = -1;
         minOffset = 0;
         maxOffset = -1;
+        sectionIndex = 0;
 
         if (string.IsNullOrEmpty(offsetStr) || offsetStr == "*")
             return NdbOffsetType.Any;
@@ -980,15 +1237,28 @@ public class ClamAvEngine
         if (offsetStr.StartsWith("EOF+") && int.TryParse(offsetStr.AsSpan(4), out offsetValue))
             return NdbOffsetType.EndOfFile;
 
-        if (offsetStr.StartsWith("S") && offsetStr.Length > 2 && offsetStr[1] is >= '0' and <= '9')
+        if (offsetStr.StartsWith("S") && offsetStr.Length > 2)
         {
-            var sSpan = offsetStr.AsSpan(1);
-            var plusIdx = sSpan.IndexOf('+');
-            if (plusIdx > 0 && int.TryParse(sSpan[..plusIdx], out offsetValue))
+            if (offsetStr[1] == 'E' && offsetStr.Length > 2)
             {
-                int.TryParse(sSpan[(plusIdx + 1)..], out var secOff);
-                offsetValue = secOff;
-                return NdbOffsetType.SectionIndex;
+                if (int.TryParse(offsetStr.AsSpan(2), out var wholeSec))
+                {
+                    offsetValue = 0;
+                    sectionIndex = wholeSec;
+                    return NdbOffsetType.SectionIndex;
+                }
+            }
+            if (offsetStr[1] >= '0' && offsetStr[1] <= '9')
+            {
+                var sSpan = offsetStr.AsSpan(1);
+                var plusIdx = sSpan.IndexOf('+');
+                if (plusIdx > 0 && int.TryParse(sSpan[..plusIdx], out var secIdx))
+                {
+                    int.TryParse(sSpan[(plusIdx + 1)..], out var secOff);
+                    offsetValue = secOff;
+                    sectionIndex = secIdx;
+                    return NdbOffsetType.SectionIndex;
+                }
             }
         }
 
@@ -1007,6 +1277,7 @@ public class ClamAvEngine
                 if (int.TryParse(range[1], out maxOffset))
                 {
                     maxShift = maxOffset;
+                    maxOffset = minOffset + maxShift;
                     return NdbOffsetType.Absolute;
                 }
             }
@@ -1021,6 +1292,22 @@ public class ClamAvEngine
         }
 
         return NdbOffsetType.Any;
+    }
+
+    private void AddStoredPattern(StoredPattern sp)
+    {
+        _storedPatterns.Add(sp);
+        if (sp.TargetType == 0)
+            _type0Patterns.Add(sp);
+        else
+        {
+            if (!_patternsByTarget.TryGetValue(sp.TargetType, out var bucket))
+            {
+                bucket = new List<StoredPattern>();
+                _patternsByTarget[sp.TargetType] = bucket;
+            }
+            bucket.Add(sp);
+        }
     }
 
     public void SetDbBuildTime(DateTime buildTime)
@@ -1100,11 +1387,32 @@ public class ClamAvEngine
                 try
                 {
                     var archiveEntries = ArchiveScanner.ExtractArchive(filePath, fileType);
+                    var containerInfo = new FileInfo(filePath);
                     using (recursionCtx.EnterArchive())
                     {
+                        int entryPos = 0;
                         foreach (var entry in archiveEntries)
                         {
+                            entryPos++;
                             if (recursionCtx.LimitExceeded || threats.Count > 0 && !options.AllMatchMode)
+                                break;
+
+                            // Check CDB signatures against archive metadata
+                            foreach (var cdb in _cdbSignatures)
+                            {
+                                if (MatchCdb(cdb, fileType, containerInfo.Length, entry, entryPos))
+                                {
+                                    threats.Add(new ThreatDetail
+                                    {
+                                        FilePath = filePath,
+                                        ThreatName = cdb.Name,
+                                        Severity = DetermineSeverity(cdb.Name),
+                                        MatchType = $"CDB (Archive Entry: {entry.FileName})"
+                                    });
+                                    if (!options.AllMatchMode) break;
+                                }
+                            }
+                            if (threats.Count > 0 && !options.AllMatchMode)
                                 break;
 
                             if (!recursionCtx.CanScanFile(entry.FileSize))
@@ -1174,19 +1482,9 @@ public class ClamAvEngine
 
             using (var stream = File.OpenRead(filePath))
             {
-                var fileInfo = new FileInfo(filePath);
-
-                if (fileInfo.Length > 10 * 1024 * 1024)
-                {
-                    fileBytes = new byte[10 * 1024 * 1024];
-                    stream.ReadExactly(fileBytes, 0, fileBytes.Length);
-                }
-                else
-                {
-                    using var ms = new MemoryStream();
-                    stream.CopyTo(ms);
-                    fileBytes = ms.ToArray();
-                }
+                long scanLen = Math.Min(stream.Length, options.MaxFileSize);
+                fileBytes = new byte[scanLen];
+                stream.ReadExactly(fileBytes, 0, (int)scanLen);
 
                 stream.Position = 0;
                 using var md5 = MD5.Create();
@@ -1237,30 +1535,26 @@ public class ClamAvEngine
 
             int fileTargetType = GetFileTargetType(filePath);
             int? entryPointOff = null;
-            foreach (var sp in _storedPatterns)
+
+            List<StoredPattern>? targetBucket = null;
+            if (fileTargetType != 0 && _patternsByTarget.TryGetValue((uint)fileTargetType, out var b))
+                targetBucket = b;
+
+            if (targetBucket != null)
+            {
+                foreach (var sp in targetBucket)
+                {
+                    if (threats.Count > 0 && !options.AllMatchMode) return;
+                    if (MatchStoredPattern(fileBytes, sp, ref entryPointOff))
+                        AddStoredPatternThreat(threats, filePath, sp, options);
+                }
+            }
+
+            foreach (var sp in _type0Patterns)
             {
                 if (threats.Count > 0 && !options.AllMatchMode) return;
-
-                if (sp.TargetType != 0 && sp.TargetType != (uint)fileTargetType)
-                    continue;
-
-                if (!TryResolveSearchRegion(fileBytes, sp, ref entryPointOff, out int searchStart, out int searchLen))
-                    continue;
-
-                if (searchLen <= 0) continue;
-
-                if (searchStart == 0 && searchLen == fileBytes.Length)
-                {
-                    if (PatternCache.MatchData(fileBytes, 0, sp.Parsed))
-                        AddStoredPatternThreat(threats, filePath, sp, options);
-                }
-                else
-                {
-                    byte[] region = new byte[searchLen];
-                    Array.Copy(fileBytes, searchStart, region, 0, searchLen);
-                    if (PatternCache.MatchData(region, 0, sp.Parsed))
-                        AddStoredPatternThreat(threats, filePath, sp, options);
-                }
+                if (MatchStoredPattern(fileBytes, sp, ref entryPointOff))
+                    AddStoredPatternThreat(threats, filePath, sp, options);
             }
 
             foreach (var ldb in _ldbSignatures)
@@ -1319,31 +1613,47 @@ public class ClamAvEngine
         }
     }
 
-    private static bool TryResolveSearchRegion(byte[] fileBytes, StoredPattern sp, ref int? entryPointOff,
-        out int searchStart, out int searchLen)
+    private static bool MatchStoredPattern(byte[] fileBytes, StoredPattern sp, ref int? entryPointOff)
     {
-        searchStart = 0;
-        searchLen = fileBytes.Length;
+        if (sp.Parsed.Elements.Count == 0) return false;
+
+        if (!sp.Parsed.HasWildcards && sp.Parsed.PrefixBytes != null)
+        {
+            return MatchWildcardOrStaticPattern(fileBytes, sp, ref entryPointOff, true);
+        }
+
+        return MatchWildcardOrStaticPattern(fileBytes, sp, ref entryPointOff, false);
+    }
+
+    private static bool MatchWildcardOrStaticPattern(byte[] fileBytes, StoredPattern sp, ref int? entryPointOff, bool isStaticOnly)
+    {
+        int minStart = 0;
+        int maxStart = 0;
 
         switch (sp.OffsetType)
         {
             case NdbOffsetType.Any:
-                return true;
+                minStart = 0;
+                maxStart = fileBytes.Length - 1;
+                break;
 
             case NdbOffsetType.Absolute:
-                if (sp.MinOffset > 0 && sp.MaxOffset >= sp.MinOffset)
+                if (sp.MaxOffset >= sp.MinOffset && sp.MinOffset >= 0)
                 {
-                    searchStart = Math.Min(sp.MinOffset, fileBytes.Length);
-                    int endOff = Math.Min(sp.MaxOffset + (sp.Parsed.PrefixBytes?.Length ?? 0), fileBytes.Length);
-                    searchLen = endOff - searchStart;
-                    return searchLen > 0;
+                    minStart = Math.Min(sp.MinOffset, fileBytes.Length);
+                    maxStart = Math.Min(sp.MaxOffset, fileBytes.Length - 1);
                 }
-                return true;
+                else
+                {
+                    minStart = Math.Min(Math.Max(0, sp.OffsetValue), fileBytes.Length);
+                    maxStart = minStart;
+                }
+                break;
 
             case NdbOffsetType.EndOfFile:
-                searchStart = Math.Max(0, fileBytes.Length - sp.OffsetValue);
-                searchLen = fileBytes.Length - searchStart;
-                return searchLen > 0;
+                minStart = Math.Max(0, fileBytes.Length - sp.OffsetValue);
+                maxStart = minStart;
+                break;
 
             case NdbOffsetType.EntryPoint:
                 if (fileBytes.Length < 2 || fileBytes[0] != 0x4D || fileBytes[1] != 0x5A)
@@ -1353,22 +1663,134 @@ public class ClamAvEngine
                 if (entryPointOff < 0)
                     return false;
                 int epBase = entryPointOff.Value + sp.OffsetValue;
+                if (epBase < 0 || epBase >= fileBytes.Length) return false;
+                
+                minStart = epBase;
                 if (sp.MaxShift > 0)
-                {
-                    searchStart = Math.Min(epBase, fileBytes.Length);
-                    int endOff = Math.Min(epBase + sp.MaxShift + (sp.Parsed.PrefixBytes?.Length ?? 0), fileBytes.Length);
-                    searchLen = endOff - searchStart;
-                }
+                    maxStart = Math.Min(epBase + sp.MaxShift, fileBytes.Length - 1);
                 else
-                {
-                    searchStart = Math.Min(epBase, fileBytes.Length);
-                    searchLen = Math.Min(sp.Parsed.PrefixBytes?.Length ?? 1, fileBytes.Length - searchStart);
-                }
-                return searchLen > 0;
+                    maxStart = epBase;
+                break;
 
             default:
-                return true;
+                return false;
         }
+
+        if (minStart > maxStart || minStart >= fileBytes.Length) return false;
+
+        if (isStaticOnly && sp.Parsed.PrefixBytes != null)
+        {
+            byte[] pat = sp.Parsed.PrefixBytes;
+            if (minStart == maxStart)
+            {
+                if (minStart + pat.Length > fileBytes.Length) return false;
+                for (int j = 0; j < pat.Length; j++)
+                    if (fileBytes[minStart + j] != pat[j]) return false;
+                return true;
+            }
+            else
+            {
+                int searchEnd = Math.Min(maxStart + pat.Length, fileBytes.Length);
+                for (int i = minStart; i <= searchEnd - pat.Length; i++)
+                {
+                    bool found = true;
+                    for (int j = 0; j < pat.Length; j++)
+                    {
+                        if (fileBytes[i + j] != pat[j])
+                        {
+                            found = false;
+                            break;
+                        }
+                    }
+                    if (found) return true;
+                }
+                return false;
+            }
+        }
+        else
+        {
+            for (int i = minStart; i <= maxStart; i++)
+            {
+                if (PatternCache.MatchData(fileBytes, i, sp.Parsed))
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    private bool MatchCdb(CdbSignature sig, ClamFileType containerType, long containerSize, ArchiveEntry entry, int position)
+    {
+        if (sig.ContainerType != "*" && !CdbContainerTypeMatches(sig.ContainerType, containerType))
+            return false;
+
+        if (sig.ContainerSize != "*" && !CdbValueMatchesRange(sig.ContainerSize, containerSize))
+            return false;
+
+        if (sig.FileNameRegex != "*" && !string.IsNullOrEmpty(sig.FileNameRegex))
+        {
+            try
+            {
+                var regex = new System.Text.RegularExpressions.Regex(sig.FileNameRegex, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!regex.IsMatch(entry.FileName)) return false;
+            }
+            catch { return false; }
+        }
+
+        if (sig.FileSizeReal != "*" && !CdbValueMatchesRange(sig.FileSizeReal, entry.FileSize))
+            return false;
+
+        if (sig.IsEncrypted != "*")
+        {
+            bool reqEncrypt = sig.IsEncrypted == "1";
+            if (entry.IsEncrypted != reqEncrypt) return false;
+        }
+
+        if (sig.FilePos != "*" && !CdbValueMatchesRange(sig.FilePos, position))
+            return false;
+
+        return true;
+    }
+
+    private static bool CdbContainerTypeMatches(string sigType, ClamFileType fileType)
+    {
+        if (int.TryParse(sigType, out int typeVal))
+        {
+            int currentTypeVal = fileType switch
+            {
+                ClamFileType.ZIP or ClamFileType.ZIPSFX => 1,
+                ClamFileType.RAR or ClamFileType.RARSFX => 2,
+                ClamFileType.GZ => 3,
+                ClamFileType.BZ => 4,
+                ClamFileType.OLD_TAR or ClamFileType.POSIX_TAR => 5,
+                ClamFileType.MSCAB or ClamFileType.CABSFX => 6,
+                ClamFileType.MAIL => 7,
+                ClamFileType.S7Z or ClamFileType.S7ZSFX => 13,
+                _ => -1
+            };
+            return typeVal == currentTypeVal;
+        }
+        return false;
+    }
+
+    private static bool CdbValueMatchesRange(string rangeStr, long value)
+    {
+        if (rangeStr.Contains('-'))
+        {
+            var parts = rangeStr.Split('-');
+            if (parts.Length == 2)
+            {
+                long.TryParse(parts[0], out long min);
+                long.TryParse(parts[1], out long max);
+                if (max == 0) max = long.MaxValue;
+                return value >= min && value <= max;
+            }
+        }
+        else
+        {
+            if (long.TryParse(rangeStr, out long exact))
+                return value == exact;
+        }
+        return false;
     }
 
     private static int GetPeEntryPointOffset(byte[] data)
@@ -1377,7 +1799,7 @@ public class ClamAvEngine
         {
             if (data.Length < 0x40) return -1;
             int peOffset = BitConverter.ToInt32(data, 0x3C);
-            if (peOffset <= 0 || peOffset + 64 >= data.Length) return -1;
+            if (peOffset < 0 || peOffset + 28 > data.Length) return -1;
             if (data[peOffset] != 0x50 || data[peOffset + 1] != 0x45) return -1;
 
             ushort sections = BitConverter.ToUInt16(data, peOffset + 6);
@@ -1520,6 +1942,27 @@ public class ClamAvEngine
                             ThreatName = $"Heuristic.PE.SuspiciousSection.{section.Name}",
                             Severity = DetermineSeverity("Heuristic"),
                             MatchType = $"Heuristic ({section.Name}: ent={section.Entropy:F2}, vsize={section.VirtualSize}, rsize={section.RawSize})"
+                        });
+                        if (!options.AllMatchMode) return;
+                    }
+                }
+            }
+
+            // Check import table hash signatures
+            if (!string.IsNullOrEmpty(peInfo.ImportHashMd5) && peInfo.ImportHashMd5.Length == 32)
+            {
+                var importHash = Hash128.Parse(peInfo.ImportHashMd5);
+                if (_importHashSignatures.TryGetValue(importHash, out var impSig) && !IsIgnored(impSig.Name))
+                {
+                    if (!threats.Exists(t => t.ThreatName == impSig.Name))
+                    {
+                        threats.Add(new ThreatDetail
+                        {
+                            FilePath = filePath,
+                            ThreatName = impSig.Name,
+                            Severity = DetermineSeverity(impSig.Name),
+                            HashType = "MD5",
+                            MatchType = "PE Import Table"
                         });
                         if (!options.AllMatchMode) return;
                     }

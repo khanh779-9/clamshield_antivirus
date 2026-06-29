@@ -454,6 +454,15 @@ public class FreshclamService
                         try
                         {
                             progress.Report($"[{label}] Extracting {dbFile}...");
+                            bool verified = await Task.Run(() => CvdVerifier.VerifyCvdSignature(destFile), cancellationToken);
+                            if (verified)
+                            {
+                                rawLogBuilder.AppendLine($"Verified digital signature for {dbFile} successfully.");
+                            }
+                            else
+                            {
+                                rawLogBuilder.AppendLine($"[Warning] Digital signature verification failed for {dbFile}. File might be unsigned or modified.");
+                            }
                             var extracted = await Task.Run(() => CvdReader.ExtractCvd(destFile), cancellationToken);
                             totalExtractedSignatures += extracted.Count;
                             successCount++;

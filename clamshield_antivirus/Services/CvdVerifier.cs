@@ -32,18 +32,31 @@ public static class CvdVerifier
             string headerStr = System.Text.Encoding.ASCII.GetString(headerBytes);
             var parts = headerStr.Split(':');
 
-            if (parts.Length <= 7)
+            if (parts.Length <= 6)
                 return false;
 
-            string? storedSignature = parts[7]?.Trim('\0', ' ');
+            string? storedSignature = parts[6]?.Trim('\0', ' ');
             if (string.IsNullOrEmpty(storedSignature) || storedSignature.Length < 20)
                 return false;
 
+            byte[] signatureBytes;
+            try
+            {
+                signatureBytes = Convert.FromHexString(storedSignature);
+            }
+            catch
+            {
+                return false;
+            }
+
             using var sha256 = SHA256.Create();
+            using var md5 = MD5.Create();
             long bodyLen = fs.Length - 512;
             fs.Position = 512;
 
             byte[] bodyHash;
+            byte[] bodyMd5;
+
             if (bodyLen <= 1024 * 1024 * 100)
             {
                 byte[] body = new byte[bodyLen];
@@ -55,13 +68,38 @@ public static class CvdVerifier
                     offset += read;
                 }
                 bodyHash = sha256.ComputeHash(body);
+                bodyMd5 = md5.ComputeHash(body);
             }
             else
             {
                 bodyHash = sha256.ComputeHash(fs);
+                fs.Position = 512;
+                bodyMd5 = md5.ComputeHash(fs);
             }
 
-            return true;
+            using var rsa = new RSACryptoServiceProvider();
+            var rsaParams = new RSAParameters
+            {
+                Modulus = ClamavRsaModulus,
+                Exponent = ClamavRsaExponent
+            };
+            rsa.ImportParameters(rsaParams);
+
+            try
+            {
+                if (rsa.VerifyHash(bodyMd5, CryptoConfig.MapNameToOID("MD5")!, signatureBytes))
+                    return true;
+            }
+            catch { }
+
+            try
+            {
+                if (rsa.VerifyHash(bodyHash, CryptoConfig.MapNameToOID("SHA256")!, signatureBytes))
+                    return true;
+            }
+            catch { }
+
+            return false;
         }
         catch
         {
@@ -81,9 +119,9 @@ public static class CvdVerifier
 
             string headerStr = System.Text.Encoding.ASCII.GetString(headerBytes);
             var parts = headerStr.Split(':');
-            if (parts.Length <= 7) return null;
+            if (parts.Length <= 6) return null;
 
-            return parts[7]?.Trim('\0', ' ');
+            return parts[6]?.Trim('\0', ' ');
         }
         catch
         {
@@ -104,9 +142,9 @@ public static class CvdVerifier
             string headerStr = System.Text.Encoding.ASCII.GetString(headerBytes);
             var parts = headerStr.Split(':');
 
-            if (parts.Length <= 7) return false;
+            if (parts.Length <= 6) return false;
 
-            string signature = parts[7]?.Trim('\0', ' ') ?? string.Empty;
+            string signature = parts[6]?.Trim('\0', ' ') ?? string.Empty;
             return signature.Length >= 20 && IsHexString(signature);
         }
         catch

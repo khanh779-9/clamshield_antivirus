@@ -17,26 +17,8 @@ public class RealTimeMonitor : IDisposable
     private List<string> _exclusionPatterns = new();
 
     // Fields for refined real-time scanning
-    private class ScanItem
-    {
-        public string FilePath { get; }
-        public long SequenceId { get; }
-
-        public ScanItem(string filePath, long sequenceId)
-        {
-            FilePath = filePath;
-            SequenceId = sequenceId;
-        }
-    }
-
-    private readonly Queue<ScanItem> _scanQueue = new();
-    private long _latestSeq = -1;
-    private long _scanningSeq = -1;
-    private CancellationTokenSource? _scanningCts;
-    private string? _pendingFile;
-    private long _pendingSeq = -1;
-    private Task? _queueProcessorTask;
-    private readonly SemaphoreSlim _queueSemaphore = new(0);
+    private readonly Dictionary<string, DateTime> _pendingFiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _concurrencySemaphore = new(8);
 
     public bool IsRunning => _enabled;
     public int TotalScanned => _totalScanned;
@@ -63,13 +45,11 @@ public class RealTimeMonitor : IDisposable
 
         lock (_lock)
         {
-            _latestSeq = -1;
-            _scanningSeq = -1;
-            _pendingFile = null;
-            _pendingSeq = -1;
-            _scanQueue.Clear();
+            lock (_pendingFiles)
+            {
+                _pendingFiles.Clear();
+            }
             _enabled = true;
-            _queueProcessorTask = Task.Run(ProcessQueueAsync);
         }
 
         ProtectionStarted?.Invoke();
@@ -139,23 +119,14 @@ public class RealTimeMonitor : IDisposable
 
         lock (_lock)
         {
-            _scanningCts?.Cancel();
-            _scanningCts?.Dispose();
-            _scanningCts = null;
-            _scanningSeq = -1;
-            _pendingFile = null;
-            _pendingSeq = -1;
-            _scanQueue.Clear();
+            lock (_pendingFiles)
+            {
+                _pendingFiles.Clear();
+            }
         }
 
         _debounceTimer?.Dispose();
         _debounceTimer = null;
-
-        try
-        {
-            _queueSemaphore.Release();
-        }
-        catch (ObjectDisposedException) { }
     }
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
@@ -164,108 +135,82 @@ public class RealTimeMonitor : IDisposable
 
         string filePath = e.FullPath;
 
-        lock (_lock)
+        lock (_pendingFiles)
         {
-            _latestSeq++;
-            long n = _latestSeq;
-
-            if (_scanningSeq != -1 && _scanningSeq <= n - 2)
-            {
-                System.Diagnostics.Debug.WriteLine($"Cancelling active scan (seq {_scanningSeq}) because new file (seq {n}) was detected: {filePath}");
-                try
-                {
-                    _scanningCts?.Cancel();
-                }
-                catch (ObjectDisposedException) { }
-            }
-
-            _pendingFile = filePath;
-            _pendingSeq = n;
-
-            _debounceTimer?.Dispose();
-            _debounceTimer = new Timer(_ => ProcessPending(), null, 1500, Timeout.Infinite);
+            _pendingFiles[filePath] = DateTime.UtcNow;
         }
-    }
 
-    private void ProcessPending()
-    {
-        string? fileToQueue = null;
-        long seqToQueue = -1;
-
-        lock (_lock)
-        {
-            if (!_enabled || _pendingFile == null) return;
-
-            fileToQueue = _pendingFile;
-            seqToQueue = _pendingSeq;
-            _pendingFile = null;
-            _pendingSeq = -1;
-
-            _scanQueue.Enqueue(new ScanItem(fileToQueue, seqToQueue));
-            try
-            {
-                _queueSemaphore.Release();
-            }
-            catch (ObjectDisposedException) { }
-        }
-    }
-
-    private async Task ProcessQueueAsync()
-    {
-        while (_enabled)
-        {
-            ScanItem? item = null;
-            lock (_lock)
-            {
-                if (_scanQueue.Count > 0)
-                {
-                    item = _scanQueue.Dequeue();
-                }
-            }
-
-            if (item == null)
-            {
-                try
-                {
-                    await _queueSemaphore.WaitAsync();
-                }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                continue;
-            }
-
-            await ScanFileAsync(item);
-        }
-    }
-
-    private async Task ScanFileAsync(ScanItem item)
-    {
-        CancellationTokenSource cts;
         lock (_lock)
         {
             if (!_enabled) return;
-
-            long newestSeq = _latestSeq;
-            if (item.SequenceId <= newestSeq - 2)
+            if (_debounceTimer == null)
             {
-                System.Diagnostics.Debug.WriteLine($"Skipping queue item {item.FilePath} (seq {item.SequenceId}) because newest is {newestSeq}");
-                return;
+                _debounceTimer = new Timer(_ => ProcessPendingFiles(), null, 500, Timeout.Infinite);
             }
+        }
+    }
 
-            _scanningSeq = item.SequenceId;
-            _scanningCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            cts = _scanningCts;
+    private void ProcessPendingFiles()
+    {
+        var filesToScan = new List<string>();
+        var now = DateTime.UtcNow;
+
+        lock (_pendingFiles)
+        {
+            var keysToRemove = new List<string>();
+            foreach (var kvp in _pendingFiles)
+            {
+                if ((now - kvp.Value).TotalMilliseconds >= 1000)
+                {
+                    filesToScan.Add(kvp.Key);
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
+            foreach (var key in keysToRemove)
+            {
+                _pendingFiles.Remove(key);
+            }
         }
 
+        foreach (var file in filesToScan)
+        {
+            _ = Task.Run(async () =>
+            {
+                await _concurrencySemaphore.WaitAsync();
+                try
+                {
+                    await ScanFileAsync(file);
+                }
+                finally
+                {
+                    _concurrencySemaphore.Release();
+                }
+            });
+        }
+
+        lock (_lock)
+        {
+            _debounceTimer?.Dispose();
+            _debounceTimer = null;
+
+            bool hasPending;
+            lock (_pendingFiles)
+            {
+                hasPending = _pendingFiles.Count > 0;
+            }
+
+            if (hasPending && _enabled)
+            {
+                _debounceTimer = new Timer(_ => ProcessPendingFiles(), null, 500, Timeout.Infinite);
+            }
+        }
+    }
+
+    private async Task ScanFileAsync(string file)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            string file = item.FilePath;
             if (!File.Exists(file)) return;
             if (IsExcluded(file)) return;
 
@@ -276,7 +221,7 @@ public class RealTimeMonitor : IDisposable
 
             if (cts.Token.IsCancellationRequested || result.Status == "Cancelled")
             {
-                System.Diagnostics.Debug.WriteLine($"Scan for {file} (seq {item.SequenceId}) was cancelled.");
+                System.Diagnostics.Debug.WriteLine($"Scan for {file} was cancelled or timed out.");
                 return;
             }
 
@@ -295,57 +240,57 @@ public class RealTimeMonitor : IDisposable
         }
         catch (OperationCanceledException)
         {
-            System.Diagnostics.Debug.WriteLine($"Scan for {item.FilePath} (seq {item.SequenceId}) threw OperationCanceledException.");
+            System.Diagnostics.Debug.WriteLine($"Scan for {file} timed out.");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error scanning file {item.FilePath}: {ex.Message}");
-        }
-        finally
-        {
-            lock (_lock)
-            {
-                if (_scanningSeq == item.SequenceId)
-                {
-                    _scanningSeq = -1;
-                    _scanningCts?.Dispose();
-                    _scanningCts = null;
-                }
-            }
+            System.Diagnostics.Debug.WriteLine($"Error scanning file {file}: {ex.Message}");
         }
     }
 
     private bool IsExcluded(string path)
     {
-        // Default system exclusions to avoid performance bottlenecks
-        var systemExclusions = new[]
-        {
-            @"\Windows\",
-            @"\$Recycle.Bin",
-            @"\System Volume Information",
-            @"\AppData\Local\Temp",
-            @"\AppData\Local\Microsoft\Windows\INetCache",
-            @"pagefile.sys",
-            @"hiberfil.sys",
-            @"swapfile.sys",
-            @"dumpstack.log",
-            // Application startup path
-            AppDomain.CurrentDomain.BaseDirectory+"\\quarantine",
-        };
+        if (string.IsNullOrEmpty(path)) return true;
 
-        foreach (var exclude in systemExclusions)
-        {
-            if (path.IndexOf(exclude, StringComparison.OrdinalIgnoreCase) >= 0)
-                return true;
-        }
+        // Default system exclusions
+        if (path.IndexOf(@"\Windows\", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (path.IndexOf(@"\$Recycle.Bin", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (path.IndexOf(@"\System Volume Information", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (path.IndexOf(@"\AppData\Local\Temp", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (path.IndexOf(@"\AppData\Local\Microsoft\Windows\INetCache", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        if (path.IndexOf(baseDir + "quarantine", StringComparison.OrdinalIgnoreCase) >= 0) return true;
 
+        string fileName = Path.GetFileName(path);
+        if (fileName.Equals("pagefile.sys", StringComparison.OrdinalIgnoreCase)) return true;
+        if (fileName.Equals("hiberfil.sys", StringComparison.OrdinalIgnoreCase)) return true;
+        if (fileName.Equals("swapfile.sys", StringComparison.OrdinalIgnoreCase)) return true;
+        if (fileName.Equals("dumpstack.log", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Settings-based exclusions (same logic as ClamAvService)
         foreach (var pattern in _exclusionPatterns)
         {
             if (string.IsNullOrEmpty(pattern)) continue;
             if (path.Equals(pattern, StringComparison.OrdinalIgnoreCase)) return true;
-            if (path.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            if (pattern.Contains('*') || pattern.Contains('?'))
+            {
+                if (WildcardMatch(path, pattern)) return true;
+            }
+            if (path.StartsWith(pattern, StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
+    }
+
+    private static bool WildcardMatch(string input, string pattern)
+    {
+        if (!pattern.Contains('*') && !pattern.Contains('?'))
+            return input.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+
+        var regexPattern = System.Text.RegularExpressions.Regex.Escape(pattern)
+            .Replace("\\*", ".*")
+            .Replace("\\?", ".");
+        return System.Text.RegularExpressions.Regex.IsMatch(input, regexPattern,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     private static void OnWatcherError(object sender, ErrorEventArgs e)
@@ -356,7 +301,7 @@ public class RealTimeMonitor : IDisposable
     public void Dispose()
     {
         Stop();
-        _queueSemaphore.Dispose();
         _debounceTimer?.Dispose();
+        _concurrencySemaphore.Dispose();
     }
 }

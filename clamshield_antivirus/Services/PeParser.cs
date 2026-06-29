@@ -100,38 +100,46 @@ public static class PeParser
             info.Is32Bit = peMagic == 0x010B;
             info.IsValid = true;
 
+            reader.ReadBytes(14); // skip MajorLinker, MinorLinker, SizeOfCode, SizeOfInit, SizeOfUninit to offset 16
+            info.EntryPointRva = reader.ReadUInt32(); // offset 16 (4 bytes)
+
             if (info.Is32Bit)
             {
-                reader.ReadBytes(4);
-                info.ImageBase = reader.ReadUInt32();
-                reader.ReadBytes(4);
-                info.SizeOfImage = reader.ReadUInt32();
-                reader.ReadBytes(4);
-                info.EntryPointRva = reader.ReadUInt32();
+                reader.ReadBytes(8); // skip BaseOfCode (4 bytes), BaseOfData (4 bytes) to offset 28
+                info.ImageBase = reader.ReadUInt32(); // offset 28 (4 bytes)
             }
             else
             {
-                reader.ReadBytes(4);
-                info.ImageBase = reader.ReadUInt32();
-                reader.ReadBytes(4);
-                info.SizeOfImage = reader.ReadUInt32();
-                reader.ReadBytes(4);
-                info.EntryPointRva = reader.ReadUInt32();
+                reader.ReadBytes(4); // skip BaseOfCode (4 bytes) to offset 24
+                ulong imageBase64 = reader.ReadUInt64(); // offset 24 (8 bytes)
+                info.ImageBase = (uint)(imageBase64 & 0xFFFFFFFF);
             }
 
-            int dataDirCount = info.Is32Bit ? 16 : 16;
-            long dataDirOffset = reader.BaseStream.Position;
-            if (dataDirOffset > reader.BaseStream.Length - (dataDirCount * 8))
+            reader.ReadBytes(24); // skip to offset 56
+            info.SizeOfImage = reader.ReadUInt32(); // offset 56 (4 bytes)
+
+            if (info.Is32Bit)
             {
-                info.IsValid = false;
-                return info;
+                reader.ReadBytes(36); // skip to offset 96
+            }
+            else
+            {
+                reader.ReadBytes(52); // skip to offset 112
             }
 
-            for (int i = 0; i < dataDirCount && i <= 15; i++)
+            uint importDirectoryRva = 0;
+            uint importDirectorySize = 0;
+
+            for (int i = 0; i < 16; i++)
             {
                 uint dirRva = reader.ReadUInt32();
                 uint dirSize = reader.ReadUInt32();
-                if (i == 1 && dirRva > 0 && dirSize > 0) info.HasTls = true;
+                if (i == 1)
+                {
+                    importDirectoryRva = dirRva;
+                    importDirectorySize = dirSize;
+                }
+                if (i == 9 && dirRva > 0 && dirSize > 0) info.HasTls = true; // Index 9 is TLS directory
                 if (i == 2 && dirRva > 0 && dirSize > 0) info.HasResource = true;
                 if (i == 5 && dirRva > 0 && dirSize > 0) info.HasRelocations = true;
             }
@@ -199,6 +207,127 @@ public static class PeParser
                 info.Sections[i] = section;
             }
 
+            // Calculate Import Hash (imphash)
+            if (importDirectoryRva > 0 && importDirectorySize > 0)
+            {
+                uint importOffset = RvaToOffset(importDirectoryRva, info.Sections);
+                if (importOffset > 0 && importOffset + 20 <= stream.Length)
+                {
+                    var importList = new List<string>();
+                    var dllList = new List<string>();
+                    var funcList = new List<string>();
+                    
+                    reader.BaseStream.Position = importOffset;
+                    
+                    var descriptors = new List<(uint LookupTableRva, uint NameRva, uint AddressTableRva)>();
+                    while (reader.BaseStream.Position + 20 <= stream.Length)
+                    {
+                        uint lookupRva = reader.ReadUInt32();
+                        uint timeDate = reader.ReadUInt32();
+                        uint forwarder = reader.ReadUInt32();
+                        uint nameRva = reader.ReadUInt32();
+                        uint addrRva = reader.ReadUInt32();
+                        
+                        if (lookupRva == 0 && nameRva == 0 && addrRva == 0)
+                            break; // null descriptor
+                            
+                        descriptors.Add((lookupRva, nameRva, addrRva));
+                    }
+                    
+                    foreach (var desc in descriptors)
+                    {
+                        uint nameOff = RvaToOffset(desc.NameRva, info.Sections);
+                        if (nameOff == 0 || nameOff >= stream.Length) continue;
+                        
+                        reader.BaseStream.Position = nameOff;
+                        string dllName = ReadNullTerminatedAscii(reader);
+                        if (string.IsNullOrEmpty(dllName)) continue;
+                        
+                        string dllNameLower = dllName.ToLowerInvariant();
+                        if (dllNameLower.EndsWith(".dll"))
+                            dllNameLower = dllNameLower.Substring(0, dllNameLower.Length - 4);
+                            
+                        dllList.Add(dllName);
+                        
+                        uint thunkRva = desc.LookupTableRva != 0 ? desc.LookupTableRva : desc.AddressTableRva;
+                        uint thunkOff = RvaToOffset(thunkRva, info.Sections);
+                        if (thunkOff == 0 || thunkOff >= stream.Length) continue;
+                        
+                        reader.BaseStream.Position = thunkOff;
+                        
+                        var thunks = new List<ulong>();
+                        if (info.Is32Bit)
+                        {
+                            while (reader.BaseStream.Position + 4 <= stream.Length)
+                            {
+                                uint t = reader.ReadUInt32();
+                                if (t == 0) break;
+                                thunks.Add(t);
+                            }
+                        }
+                        else
+                        {
+                            while (reader.BaseStream.Position + 8 <= stream.Length)
+                            {
+                                ulong t = reader.ReadUInt64();
+                                if (t == 0) break;
+                                thunks.Add(t);
+                            }
+                        }
+                        
+                        foreach (var thunk in thunks)
+                        {
+                            bool isOrdinal = info.Is32Bit 
+                                ? (thunk & 0x80000000) != 0 
+                                : (thunk & 0x8000000000000000) != 0;
+                                
+                            if (isOrdinal)
+                            {
+                                ulong ordinal = info.Is32Bit ? (thunk & 0xFFFF) : (thunk & 0xFFFF);
+                                string impStr = $"{dllNameLower}.{ordinal}";
+                                importList.Add(impStr);
+                                funcList.Add($"Ordinal_{ordinal}");
+                            }
+                            else
+                            {
+                                uint nameRva = (uint)(thunk & 0xFFFFFFFF);
+                                uint funcNameOff = RvaToOffset(nameRva, info.Sections);
+                                if (funcNameOff > 0 && funcNameOff + 2 < stream.Length)
+                                {
+                                    long savedPos = reader.BaseStream.Position;
+                                    reader.BaseStream.Position = funcNameOff + 2; // skip Hint (2 bytes)
+                                    string funcName = ReadNullTerminatedAscii(reader);
+                                    reader.BaseStream.Position = savedPos;
+                                    
+                                    if (!string.IsNullOrEmpty(funcName))
+                                    {
+                                        string impStr = $"{dllNameLower}.{funcName.ToLowerInvariant()}";
+                                        importList.Add(impStr);
+                                        funcList.Add(funcName);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    info.ImportedDlls = dllList.ToArray();
+                    info.ImportedFunctions = funcList.ToArray();
+                    
+                    if (importList.Count > 0)
+                    {
+                        string importStr = string.Join(",", importList);
+                        byte[] importBytes = Encoding.ASCII.GetBytes(importStr);
+                        using var md5 = MD5.Create();
+                        byte[] hashBytes = md5.ComputeHash(importBytes);
+                        info.ImportHashMd5 = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+                        
+                        using var sha256 = SHA256.Create();
+                        byte[] hashBytesSha = sha256.ComputeHash(importBytes);
+                        info.ImportHashSha256 = BitConverter.ToString(hashBytesSha).Replace("-", "").ToLowerInvariant();
+                    }
+                }
+            }
+
             reader.BaseStream.Position = origPos;
             return info;
         }
@@ -238,5 +367,30 @@ public static class PeParser
             entropy -= p * Math.Log2(p);
         }
         return entropy;
+    }
+
+    private static uint RvaToOffset(uint rva, PeSectionInfo[] sections)
+    {
+        if (rva == 0) return 0;
+        foreach (var sec in sections)
+        {
+            if (rva >= sec.VirtualAddress && rva < sec.VirtualAddress + sec.VirtualSize)
+            {
+                return sec.RawOffset + (rva - sec.VirtualAddress);
+            }
+        }
+        return 0;
+    }
+
+    private static string ReadNullTerminatedAscii(BinaryReader reader)
+    {
+        var sb = new StringBuilder();
+        while (reader.BaseStream.Position < reader.BaseStream.Length)
+        {
+            byte b = reader.ReadByte();
+            if (b == 0) break;
+            sb.Append((char)b);
+        }
+        return sb.ToString();
     }
 }
