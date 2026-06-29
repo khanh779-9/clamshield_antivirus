@@ -498,6 +498,51 @@ public class FreshclamService
         return logEntry;
     }
 
+    public async Task<bool> IsDatabaseOutdatedAsync()
+    {
+        try
+        {
+            using var client = new HttpClient();
+            client.Timeout = TimeSpan.FromSeconds(10);
+            string uuid = App.Settings.Get("FreshclamUUID", string.Empty);
+            if (string.IsNullOrEmpty(uuid))
+            {
+                uuid = Guid.NewGuid().ToString();
+                App.Settings.Set("FreshclamUUID", uuid);
+            }
+            string userAgent = $"ClamAV/1.3.1 (OS: win32, ARCH: x86_64, CPU: x86_64, CLAMAVVER: 1.3.1, UUID: {uuid})";
+            client.DefaultRequestHeaders.Add("User-Agent", userAgent);
+
+            foreach (var dbFile in DefaultDatabases)
+            {
+                int localVersion = GetLocalCvdVersion(dbFile);
+                if (localVersion == 0) continue;
+
+                foreach (var mirror in DefaultMirrors)
+                {
+                    int remoteVersion = await GetRemoteCvdVersionAsync(client, dbFile, mirror, CancellationToken.None);
+                    if (remoteVersion > localVersion)
+                        return true;
+                    if (remoteVersion >= 0)
+                        break;
+                }
+            }
+        }
+        catch
+        {
+            // Network unavailable – use time-based heuristic
+        }
+
+        // Fallback: if last update is more than 7 days old, consider outdated
+        string lastUpdate = App.Settings.Get("LastDatabaseUpdateTime", string.Empty);
+        if (!string.IsNullOrEmpty(lastUpdate) && DateTime.TryParse(lastUpdate, out var lastUpdateTime))
+        {
+            return (DateTime.Now - lastUpdateTime).TotalDays > 7;
+        }
+
+        return false;
+    }
+
     private void WriteBackupOfflineSignatures()
     {
         try

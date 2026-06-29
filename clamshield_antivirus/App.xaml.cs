@@ -1,9 +1,12 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Windows;
 using clamshield_antivirus.Services;
 using clamshield_antivirus.Models;
+using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus;
 
@@ -41,12 +44,24 @@ public partial class App : Application
             }
             Dispatcher.BeginInvoke(() =>
             {
-                if (MainWindow != null && MainWindow.WindowState == WindowState.Minimized)
+                if (MainWindow != null)
                 {
-                    MainWindow.WindowState = WindowState.Normal;
+                    if (MainWindow.WindowState == WindowState.Minimized)
+                    {
+                        MainWindow.WindowState = WindowState.Normal;
+                    }
+                    MainWindow.Show();
+                    MainWindow.Activate();
+
+                    if (MainWindow.DataContext is ViewModels.MainViewModel mainVm)
+                    {
+                        lock (PendingScanTargets)
+                        {
+                            PendingScanTargets.Clear();
+                        }
+                        mainVm.HandleScanRequest(path);
+                    }
                 }
-                MainWindow?.Show();
-                MainWindow?.Activate();
             });
         };
 
@@ -75,7 +90,7 @@ public partial class App : Application
 
         RealTimeMonitor.ThreatDetected += (filePath, threatName) =>
         {
-            clamshield_antivirus.Views.PopupAlert.ShowAlert(filePath, threatName);
+            PopupAlert.ShowAlert(filePath, threatName);
             _ = Task.Run(async () =>
             {
                 try
@@ -93,6 +108,57 @@ public partial class App : Application
                 catch { }
             });
         };
+
+        RealTimeMonitor.ProtectionStarted += () =>
+        {
+            PopupAlert.ShowInfoAlert(
+                "Real-Time Protection Enabled",
+                "System-wide real-time antivirus shield is now active.",
+                "All file system changes will be monitored.",
+                AlertType.Success);
+        };
+
+        RealTimeMonitor.ProtectionStopped += () =>
+        {
+            PopupAlert.ShowInfoAlert(
+                "Real-Time Protection Disabled",
+                "System-wide real-time antivirus shield has been turned off.",
+                "Your system may be vulnerable to real-time threats.",
+                AlertType.Warning);
+        };
+
+        // Periodic database outdated check (every 6 hours)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Initial check after a short delay
+                await Task.Delay(TimeSpan.FromSeconds(30));
+                if (await Freshclam.IsDatabaseOutdatedAsync())
+                {
+                    PopupAlert.ShowInfoAlert(
+                        "Virus Database Outdated",
+                        "Your virus definitions are out of date.",
+                        "Go to Database tab and update to stay protected.",
+                        AlertType.Warning);
+                }
+
+                // Periodic checks
+                using var periodicTimer = new PeriodicTimer(TimeSpan.FromHours(6));
+                while (await periodicTimer.WaitForNextTickAsync())
+                {
+                    if (await Freshclam.IsDatabaseOutdatedAsync())
+                    {
+                        PopupAlert.ShowInfoAlert(
+                            "Virus Database Outdated",
+                            "Your virus definitions are out of date.",
+                            "Go to Database tab and update to stay protected.",
+                            AlertType.Warning);
+                    }
+                }
+            }
+            catch { }
+        });
 
         if (Settings.Get("RealtimeEnabled", false))
         {

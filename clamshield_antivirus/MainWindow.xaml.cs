@@ -20,10 +20,24 @@ namespace clamshield_antivirus
         {
             _trayService = App.TrayService;
 
-            if (App.Settings.Get("StartMinimized", false))
+            if (App.Settings.Get("StartMinimized", false) && App.PendingScanTargets.Count == 0)
             {
                 WindowState = WindowState.Minimized;
                 Hide();
+            }
+
+            lock (App.PendingScanTargets)
+            {
+                if (App.PendingScanTargets.Count > 0)
+                {
+                    string target = App.PendingScanTargets[0];
+                    App.PendingScanTargets.Clear();
+
+                    if (DataContext is ViewModels.MainViewModel mainVm)
+                    {
+                        mainVm.HandleScanRequest(target);
+                    }
+                }
             }
         }
 

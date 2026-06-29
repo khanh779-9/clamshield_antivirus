@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using clamshield_antivirus.Models;
 
 namespace clamshield_antivirus.Services;
@@ -402,12 +403,29 @@ public class ClamAvService
                 }
                 App.Engine.Compile();
                 _signaturesLoaded = true;
+                TrimMemory();
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error loading local databases: {ex.Message}");
             }
         }
+    }
+
+    [DllImport("psapi.dll")]
+    private static extern int EmptyWorkingSet(IntPtr hwProc);
+
+    private static void TrimMemory()
+    {
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, true, true);
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            EmptyWorkingSet(process.Handle);
+        }
+        catch { }
     }
 
     private static string FormatFileSize(long bytes)

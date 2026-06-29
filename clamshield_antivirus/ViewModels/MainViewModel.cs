@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using clamshield_antivirus.Helpers;
@@ -87,5 +89,32 @@ public class MainViewModel : ViewModelBase
                 }
             }
         });
+    }
+
+    public void HandleScanRequest(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+
+        var scanItem = NavigationItems.FirstOrDefault(item => item.Title.Equals("Scan", StringComparison.OrdinalIgnoreCase));
+        if (scanItem != null)
+        {
+            SelectedNavigationItem = scanItem;
+        }
+
+        if (scanItem?.ViewModel is ScanViewModel scanVm)
+        {
+            if (scanVm.IsScanning)
+            {
+                try { scanVm.CancelScanCommand.Execute(null); } catch { }
+            }
+
+            scanVm.Targets.Clear();
+            scanVm.Targets.Add(path);
+
+            if (scanVm.StartScanCommand.CanExecute(null))
+            {
+                scanVm.StartScanCommand.Execute(null);
+            }
+        }
     }
 }

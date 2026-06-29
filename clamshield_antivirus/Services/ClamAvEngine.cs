@@ -10,6 +10,97 @@ using clamshield_antivirus.Models;
 
 namespace clamshield_antivirus.Services;
 
+public struct Hash128 : IEquatable<Hash128>
+{
+    public ulong Low;
+    public ulong High;
+
+    public Hash128(ulong low, ulong high)
+    {
+        Low = low;
+        High = high;
+    }
+
+    public bool Equals(Hash128 other) => Low == other.Low && High == other.High;
+    public override bool Equals(object? obj) => obj is Hash128 other && Equals(other);
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            return (Low.GetHashCode() * 397) ^ High.GetHashCode();
+        }
+    }
+
+    public static Hash128 Parse(string hex)
+    {
+        if (hex.Length < 32) return default;
+        ulong high = Convert.ToUInt64(hex.Substring(0, 16), 16);
+        ulong low = Convert.ToUInt64(hex.Substring(16, 16), 16);
+        return new Hash128(low, high);
+    }
+}
+
+public struct Hash256 : IEquatable<Hash256>
+{
+    public ulong A;
+    public ulong B;
+    public ulong C;
+    public ulong D;
+
+    public bool Equals(Hash256 other) => A == other.A && B == other.B && C == other.C && D == other.D;
+    public override bool Equals(object? obj) => obj is Hash256 other && Equals(other);
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            int hash = A.GetHashCode();
+            hash = (hash * 397) ^ B.GetHashCode();
+            hash = (hash * 397) ^ C.GetHashCode();
+            hash = (hash * 397) ^ D.GetHashCode();
+            return hash;
+        }
+    }
+
+    public static Hash256 Parse(string hex)
+    {
+        if (hex.Length < 64) return default;
+        ulong a = Convert.ToUInt64(hex.Substring(0, 16), 16);
+        ulong b = Convert.ToUInt64(hex.Substring(16, 16), 16);
+        ulong c = Convert.ToUInt64(hex.Substring(32, 16), 16);
+        ulong d = Convert.ToUInt64(hex.Substring(48, 16), 16);
+        return new Hash256 { A = a, B = b, C = c, D = d };
+    }
+}
+
+public struct Hash160 : IEquatable<Hash160>
+{
+    public ulong Low;
+    public ulong Mid;
+    public uint High;
+
+    public bool Equals(Hash160 other) => Low == other.Low && Mid == other.Mid && High == other.High;
+    public override bool Equals(object? obj) => obj is Hash160 other && Equals(other);
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            int hash = Low.GetHashCode();
+            hash = (hash * 397) ^ Mid.GetHashCode();
+            hash = (hash * 397) ^ High.GetHashCode();
+            return hash;
+        }
+    }
+
+    public static Hash160 Parse(string hex)
+    {
+        if (hex.Length < 40) return default;
+        ulong low = Convert.ToUInt64(hex.Substring(0, 16), 16);
+        ulong mid = Convert.ToUInt64(hex.Substring(16, 16), 16);
+        uint high = Convert.ToUInt32(hex.Substring(32, 8), 16);
+        return new Hash160 { Low = low, Mid = mid, High = high };
+    }
+}
+
 public class HexPattern
 {
     public string Name { get; set; } = string.Empty;
@@ -47,15 +138,18 @@ public class ScanOptions
 
 public class ClamAvEngine
 {
-    private readonly Dictionary<string, string> _md5Signatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _sha256Signatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _sha1Signatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _sectionMd5Signatures = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _sectionSha256Signatures = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Hash128, string> _md5Signatures = new();
+    private readonly Dictionary<Hash256, string> _sha256Signatures = new();
+    private readonly Dictionary<Hash160, string> _sha1Signatures = new();
+    private readonly Dictionary<Hash128, string> _sectionMd5Signatures = new();
+    private readonly Dictionary<Hash256, string> _sectionSha256Signatures = new();
     private readonly List<HexPattern> _hexPatterns = new();
     private readonly HashSet<string> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
+
+    // Cache to pool and deduplicate signature names
+    private readonly Dictionary<string, string> _namePool = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly ReaderWriterLockSlim _engineLock = new();
     private int _totalSignatures;
@@ -67,6 +161,14 @@ public class ClamAvEngine
     public ClamAvEngine()
     {
         InitializeDefaultSignatures();
+    }
+
+    private string Intern(string name)
+    {
+        if (_namePool.TryGetValue(name, out var pooled))
+            return pooled;
+        _namePool[name] = name;
+        return name;
     }
 
     private void InitializeDefaultSignatures()
@@ -83,8 +185,8 @@ public class ClamAvEngine
 
         _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
 
-        _md5Signatures["44d88612fea8a8f36de82e1278abb02f"] = "Eicar-Test-Signature-MD5";
-        _sha256Signatures["275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"] = "Eicar-Test-Signature-SHA256";
+        _md5Signatures[Hash128.Parse("44d88612fea8a8f36de82e1278abb02f")] = "Eicar-Test-Signature-MD5";
+        _sha256Signatures[Hash256.Parse("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")] = "Eicar-Test-Signature-SHA256";
     }
 
     public void Clear()
@@ -101,6 +203,7 @@ public class ClamAvEngine
             _fpHashes.Clear();
             _ignoredSigs.Clear();
             _acEngine.Clear();
+            _namePool.Clear();
             _totalSignatures = 0;
             _dbBuildTime = null;
             InitializeDefaultSignatures();
@@ -188,25 +291,22 @@ public class ClamAvEngine
 
         if (hash.Length == expectedLen && !string.IsNullOrEmpty(name))
         {
+            name = Intern(name);
             if (isSectionHash)
             {
-                var dict = hashType switch
-                {
-                    HashType.MD5 => _sectionMd5Signatures,
-                    HashType.SHA256 => _sectionSha256Signatures,
-                    _ => _sectionMd5Signatures
-                };
-                dict[hash] = name;
+                if (hashType == HashType.MD5)
+                    _sectionMd5Signatures[Hash128.Parse(hash)] = name;
+                else if (hashType == HashType.SHA256)
+                    _sectionSha256Signatures[Hash256.Parse(hash)] = name;
             }
             else
             {
-                var dict = hashType switch
-                {
-                    HashType.MD5 => _md5Signatures,
-                    HashType.SHA256 => _sha256Signatures,
-                    _ => _md5Signatures
-                };
-                dict[hash] = name;
+                if (hashType == HashType.MD5)
+                    _md5Signatures[Hash128.Parse(hash)] = name;
+                else if (hashType == HashType.SHA256)
+                    _sha256Signatures[Hash256.Parse(hash)] = name;
+                else if (hashType == HashType.SHA1)
+                    _sha1Signatures[Hash160.Parse(hash)] = name;
             }
             return 1;
         }
@@ -218,7 +318,7 @@ public class ClamAvEngine
         var parts = line.Split(':');
         if (parts.Length < 4) return 0;
 
-        string name = parts[0].Trim();
+        string name = Intern(parts[0].Trim());
         uint targetType = 0;
         if (parts.Length > 1 && uint.TryParse(parts[1].Trim(), out var tt))
             targetType = tt;
@@ -240,7 +340,11 @@ public class ClamAvEngine
             MaxOffset = maxOff
         };
 
-        _hexPatterns.Add(pattern);
+        // Redundancy check: only add to sequential search list if it requires special offset or has wildcards
+        if (isPrefixOnly || offset != "*")
+        {
+            _hexPatterns.Add(pattern);
+        }
         if (!isPrefixOnly)
             _acEngine.AddPattern(prefix, name);
         return 1;
@@ -249,24 +353,39 @@ public class ClamAvEngine
     private int LoadLdbSignature(string line)
     {
         var parts = line.Split(';');
-        if (parts.Length < 2) return 0;
+        if (parts.Length < 4) return 0;
 
         var headerParts = parts[0].Split(':');
-        string name = headerParts[0].Trim();
+        string name = Intern(headerParts[0].Trim());
 
-        if (parts.Length < 3) return 0;
+        string longestHexPattern = "";
+        for (int i = 3; i < parts.Length; i++)
+        {
+            string p = parts[i].Trim();
+            if (p.Length > longestHexPattern.Length)
+            {
+                longestHexPattern = p;
+            }
+        }
 
-        string hexPatternStr = parts[^1].Trim();
-        var (prefix, _) = ParseHexPatternAdvanced(hexPatternStr);
+        if (longestHexPattern.Length == 0) return 0;
+
+        var (prefix, isPrefixOnly) = ParseHexPatternAdvanced(longestHexPattern);
         if (prefix.Length == 0) return 0;
 
-        _hexPatterns.Add(new HexPattern
+        if (isPrefixOnly)
         {
-            Name = name,
-            Pattern = prefix,
-            Offset = "*"
-        });
-        _acEngine.AddPattern(prefix, name);
+            _hexPatterns.Add(new HexPattern
+            {
+                Name = name,
+                Pattern = prefix,
+                Offset = "*"
+            });
+        }
+        else
+        {
+            _acEngine.AddPattern(prefix, name);
+        }
         return 1;
     }
 
@@ -275,13 +394,7 @@ public class ClamAvEngine
         var parts = line.Split(':');
         if (parts.Length < 5) return 0;
 
-        string name = parts[0].Trim();
-        _hexPatterns.Add(new HexPattern
-        {
-            Name = name,
-            Pattern = Encoding.ASCII.GetBytes(name),
-            Offset = "*"
-        });
+        string name = Intern(parts[0].Trim());
         _acEngine.AddPattern(Encoding.ASCII.GetBytes(name), name);
         return 1;
     }
@@ -319,19 +432,25 @@ public class ClamAvEngine
         var parts = line.Split('=');
         if (parts.Length < 2) return 0;
 
-        string name = parts[0].Trim();
+        string name = Intern(parts[0].Trim());
         string hexPatternStr = parts[1].Trim();
 
-        var (pattern, _) = ParseHexPatternAdvanced(hexPatternStr);
+        var (pattern, isPrefixOnly) = ParseHexPatternAdvanced(hexPatternStr);
         if (pattern.Length == 0) return 0;
 
-        _hexPatterns.Add(new HexPattern
+        if (isPrefixOnly)
         {
-            Name = name,
-            Pattern = pattern,
-            Offset = "*"
-        });
-        _acEngine.AddPattern(pattern, name);
+            _hexPatterns.Add(new HexPattern
+            {
+                Name = name,
+                Pattern = pattern,
+                Offset = "*"
+            });
+        }
+        else
+        {
+            _acEngine.AddPattern(pattern, name);
+        }
         return 1;
     }
 
@@ -698,7 +817,7 @@ public class ClamAvEngine
         string sha1Hash,
         ScanOptions options)
     {
-        if (_md5Signatures.TryGetValue(md5Hash, out string? md5Name))
+        if (_md5Signatures.TryGetValue(Hash128.Parse(md5Hash), out string? md5Name))
         {
             if (!IsIgnored(md5Name))
             {
@@ -714,7 +833,7 @@ public class ClamAvEngine
             }
         }
 
-        if (_sha256Signatures.TryGetValue(sha256Hash, out string? sha256Name))
+        if (_sha256Signatures.TryGetValue(Hash256.Parse(sha256Hash), out string? sha256Name))
         {
             if (!IsIgnored(sha256Name))
             {
@@ -730,7 +849,7 @@ public class ClamAvEngine
             }
         }
 
-        if (_sha1Signatures.TryGetValue(sha1Hash, out string? sha1Name))
+        if (_sha1Signatures.TryGetValue(Hash160.Parse(sha1Hash), out string? sha1Name))
         {
             if (!IsIgnored(sha1Name))
             {
@@ -758,7 +877,7 @@ public class ClamAvEngine
             {
                 if (section.RawSize == 0) continue;
 
-                if (_sectionMd5Signatures.TryGetValue(section.Md5Hash, out string? md5Name) && !IsIgnored(md5Name))
+                if (_sectionMd5Signatures.TryGetValue(Hash128.Parse(section.Md5Hash), out string? md5Name) && !IsIgnored(md5Name))
                 {
                     if (!threats.Exists(t => t.ThreatName == md5Name))
                     {
@@ -774,7 +893,7 @@ public class ClamAvEngine
                     }
                 }
 
-                if (_sectionSha256Signatures.TryGetValue(section.Sha256Hash, out string? sha256Name) && !IsIgnored(sha256Name))
+                if (_sectionSha256Signatures.TryGetValue(Hash256.Parse(section.Sha256Hash), out string? sha256Name) && !IsIgnored(sha256Name))
                 {
                     if (!threats.Exists(t => t.ThreatName == sha256Name))
                     {
@@ -834,7 +953,7 @@ public class ClamAvEngine
             }
 
             if (content.Contains("/Launch", StringComparison.OrdinalIgnoreCase) &&
-                !IsIgnored("Heuristic.PDF.HasLaunchAction"))
+                 !IsIgnored("Heuristic.PDF.HasLaunchAction"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -1326,13 +1445,125 @@ public class AhoCorasickEngine
 {
     private class AcNode
     {
-        public Dictionary<byte, AcNode> Children { get; } = new();
+        private byte _singleKey;
+        private AcNode? _singleChild;
+        private KeyValuePair<byte, AcNode>[]? _childrenArray;
+
+        public AcNode? GetChild(byte key)
+        {
+            if (_singleChild != null)
+            {
+                return _singleKey == key ? _singleChild : null;
+            }
+            if (_childrenArray != null)
+            {
+                int min = 0;
+                int max = _childrenArray.Length - 1;
+                while (min <= max)
+                {
+                    int mid = (min + max) / 2;
+                    byte midKey = _childrenArray[mid].Key;
+                    if (midKey == key) return _childrenArray[mid].Value;
+                    if (midKey < key) min = mid + 1;
+                    else max = mid - 1;
+                }
+            }
+            return null;
+        }
+
+        public void AddChild(byte key, AcNode child)
+        {
+            if (_singleChild == null && _childrenArray == null)
+            {
+                _singleKey = key;
+                _singleChild = child;
+                return;
+            }
+
+            if (_singleChild != null)
+            {
+                _childrenArray = new KeyValuePair<byte, AcNode>[]
+                {
+                    new(_singleKey, _singleChild),
+                    new(key, child)
+                };
+                Array.Sort(_childrenArray, (x, y) => x.Key.CompareTo(y.Key));
+                _singleChild = null;
+                return;
+            }
+
+            var len = _childrenArray!.Length;
+            var newArray = new KeyValuePair<byte, AcNode>[len + 1];
+            Array.Copy(_childrenArray, newArray, len);
+            newArray[len] = new(key, child);
+            Array.Sort(newArray, (x, y) => x.Key.CompareTo(y.Key));
+            _childrenArray = newArray;
+        }
+
+        public IEnumerable<KeyValuePair<byte, AcNode>> GetChildren()
+        {
+            if (_singleChild != null)
+            {
+                yield return new KeyValuePair<byte, AcNode>(_singleKey, _singleChild);
+            }
+            else if (_childrenArray != null)
+            {
+                foreach (var kvp in _childrenArray)
+                    yield return kvp;
+            }
+        }
+
         public AcNode? Failure { get; set; }
-        public List<string> Outputs { get; } = new();
+
+        private string? _singleOutput;
+        private string[]? _outputsArray;
+
+        public List<string> Outputs
+        {
+            get
+            {
+                var list = new List<string>();
+                if (_singleOutput != null) list.Add(_singleOutput);
+                if (_outputsArray != null) list.AddRange(_outputsArray);
+                return list;
+            }
+        }
+
+        public void AddOutput(string name)
+        {
+            if (_singleOutput == null && _outputsArray == null)
+            {
+                _singleOutput = name;
+                return;
+            }
+
+            if (_singleOutput != null)
+            {
+                if (_singleOutput == name) return;
+                _outputsArray = new[] { _singleOutput, name };
+                _singleOutput = null;
+                return;
+            }
+
+            if (_outputsArray == null) return;
+            if (_outputsArray.Contains(name)) return;
+            var len = _outputsArray.Length;
+            var newArray = new string[len + 1];
+            Array.Copy(_outputsArray, newArray, len);
+            newArray[len] = name;
+            _outputsArray = newArray;
+        }
+
+        public void AddOutputs(IEnumerable<string> names)
+        {
+            foreach (var name in names)
+                AddOutput(name);
+        }
+
         public bool IsEnd { get; set; }
     }
 
-    private readonly AcNode _root = new();
+    private AcNode _root = new();
     private bool _built;
 
     public void AddPattern(byte[] pattern, string name)
@@ -1342,16 +1573,16 @@ public class AhoCorasickEngine
         var current = _root;
         foreach (byte b in pattern)
         {
-            if (!current.Children.TryGetValue(b, out var child))
+            var child = current.GetChild(b);
+            if (child == null)
             {
                 child = new AcNode();
-                current.Children[b] = child;
+                current.AddChild(b, child);
             }
             current = child;
         }
         current.IsEnd = true;
-        if (!current.Outputs.Contains(name))
-            current.Outputs.Add(name);
+        current.AddOutput(name);
         _built = false;
     }
 
@@ -1366,7 +1597,7 @@ public class AhoCorasickEngine
 
             var queue = new Queue<AcNode>();
 
-            foreach (var child in _root.Children)
+            foreach (var child in _root.GetChildren())
             {
                 child.Value.Failure = _root;
                 queue.Enqueue(child.Value);
@@ -1376,17 +1607,16 @@ public class AhoCorasickEngine
             {
                 var current = queue.Dequeue();
 
-                foreach (var child in current.Children)
+                foreach (var child in current.GetChildren())
                 {
-                    var failNode = current.Failure ?? _root;
+                    var failNode = current.Failure;
+                    while (failNode != null && failNode.GetChild(child.Key) == null)
+                        failNode = failNode.Failure;
 
-                    while (failNode != null && !failNode.Children.ContainsKey(child.Key))
-                        failNode = failNode.Failure ?? _root;
-
-                    child.Value.Failure = failNode?.Children.GetValueOrDefault(child.Key) ?? _root;
+                    child.Value.Failure = failNode?.GetChild(child.Key) ?? _root;
 
                     if (child.Value.Failure != null)
-                        child.Value.Outputs.AddRange(child.Value.Failure.Outputs);
+                        child.Value.AddOutputs(child.Value.Failure.Outputs);
 
                     queue.Enqueue(child.Value);
                 }
@@ -1407,10 +1637,11 @@ public class AhoCorasickEngine
         {
             byte b = text[i];
 
-            while (current != _root && !current.Children.ContainsKey(b))
+            while (current != _root && current.GetChild(b) == null)
                 current = current.Failure ?? _root;
 
-            if (current.Children.TryGetValue(b, out var next))
+            var next = current.GetChild(b);
+            if (next != null)
                 current = next;
             else
                 current = _root;
@@ -1430,10 +1661,7 @@ public class AhoCorasickEngine
 
     public void Clear()
     {
-        _root.Children.Clear();
-        _root.Failure = null;
-        _root.Outputs.Clear();
-        _root.IsEnd = false;
+        _root = new AcNode();
         _built = false;
     }
 }

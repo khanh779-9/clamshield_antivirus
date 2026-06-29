@@ -53,6 +53,8 @@ public class RealTimeMonitor : IDisposable
 
     public event Action<string>? FileScanned;
     public event Action<string, string>? ThreatDetected; // (filePath, threatName)
+    public event Action? ProtectionStarted;
+    public event Action? ProtectionStopped;
 
     public async Task StartAsync(IEnumerable<string> directories, bool includeSubdirectories = false, List<string>? exclusionPatterns = null)
     {
@@ -69,6 +71,8 @@ public class RealTimeMonitor : IDisposable
             _enabled = true;
             _queueProcessorTask = Task.Run(ProcessQueueAsync);
         }
+
+        ProtectionStarted?.Invoke();
 
         await Task.Run(() =>
         {
@@ -121,6 +125,7 @@ public class RealTimeMonitor : IDisposable
     public void Stop()
     {
         _enabled = false;
+        ProtectionStopped?.Invoke();
 
         lock (_watchers)
         {

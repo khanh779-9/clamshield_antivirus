@@ -53,45 +53,55 @@ public class CvdReader
         if (string.IsNullOrEmpty(header)) return null;
 
         var parts = header.Split(':');
-        if (parts.Length < 6) return null;
+        if (parts.Length < 5) return null;
 
         var info = new CvdInfo();
-
         info.DatabaseName = parts[0].Trim();
 
-        if (int.TryParse(parts[1].Trim(), out int ver))
+        if (parts.Length > 2 && int.TryParse(parts[2].Trim(), out int ver))
             info.Version = ver;
 
-        if (int.TryParse(parts[2].Trim(), out int sigCount))
+        if (parts.Length > 3 && int.TryParse(parts[3].Trim(), out int sigCount))
             info.SignatureCount = sigCount;
 
-        if (int.TryParse(parts[3].Trim(), out int funcLevel))
+        if (parts.Length > 4 && int.TryParse(parts[4].Trim(), out int funcLevel))
             info.FunctionalityLevel = funcLevel;
 
-        if (int.TryParse(parts[4].Trim(), out int reqFuncLevel))
-            info.RequiredFunctionalityLevel = reqFuncLevel;
+        bool timeParsed = false;
+        if (parts.Length > 8 && long.TryParse(parts[8].Trim('\0', ' '), out long epoch))
+        {
+            try
+            {
+                info.BuildTime = DateTimeOffset.FromUnixTimeSeconds(epoch).LocalDateTime;
+                timeParsed = true;
+            }
+            catch { }
+        }
 
-        string dateStr = parts[5].Trim();
-        if (DateTime.TryParseExact(dateStr, "dd MMM yyyyHH:mm:ss", null,
-            System.Globalization.DateTimeStyles.None, out var buildTime))
+        if (!timeParsed && parts.Length > 1)
         {
-            info.BuildTime = buildTime;
-        }
-        else
-        {
-            string cleaned = dateStr.Trim('\0', ' ');
-            if (DateTime.TryParse(cleaned, out buildTime))
+            string dateStr = parts[1].Trim();
+            if (DateTime.TryParseExact(dateStr, "dd MMM yyyy HH-mm zzzz", null,
+                System.Globalization.DateTimeStyles.None, out var buildTime))
+            {
                 info.BuildTime = buildTime;
+            }
+            else
+            {
+                string cleaned = dateStr.Trim('\0', ' ');
+                if (DateTime.TryParse(cleaned, out buildTime))
+                    info.BuildTime = buildTime;
+            }
         }
+
+        if (parts.Length > 5)
+            info.Md5Signature = parts[5].Trim('\0', ' ');
 
         if (parts.Length > 6)
-            info.Md5Signature = parts[6].Trim('\0', ' ');
+            info.DigitalSignature = parts[6].Trim('\0', ' ');
 
         if (parts.Length > 7)
-            info.DigitalSignature = parts[7].Trim('\0', ' ');
-
-        if (parts.Length > 8)
-            info.Builder = parts[8].Trim('\0', ' ');
+            info.Builder = parts[7].Trim('\0', ' ');
 
         return info;
     }
@@ -246,6 +256,24 @@ public class CvdReader
         }
     }
 
+    public static CvdInfo? ParseInfoFileHeader(string infoFilePath)
+    {
+        try
+        {
+            if (!File.Exists(infoFilePath)) return null;
+            using var reader = new StreamReader(infoFilePath);
+            string? firstLine = reader.ReadLine();
+            if (firstLine == null || !firstLine.StartsWith("ClamAV-VDB:", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            return ParseCvdHeader(firstLine);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static bool TryGetCvdInfoFromDbDir(string dbDir, out Dictionary<string, CvdInfo> cvdInfos)
     {
         cvdInfos = new Dictionary<string, CvdInfo>(StringComparer.OrdinalIgnoreCase);
@@ -261,6 +289,22 @@ public class CvdReader
                 if (info != null)
                 {
                     string dbName = Path.GetFileNameWithoutExtension(cvdFile);
+                    cvdInfos[dbName] = info;
+                }
+            }
+            catch { }
+        }
+
+        foreach (var infoFile in Directory.GetFiles(dbDir, "*.info"))
+        {
+            try
+            {
+                string dbName = Path.GetFileNameWithoutExtension(infoFile);
+                if (cvdInfos.ContainsKey(dbName)) continue;
+
+                var info = ParseInfoFileHeader(infoFile);
+                if (info != null)
+                {
                     cvdInfos[dbName] = info;
                 }
             }
