@@ -101,17 +101,451 @@ public struct Hash160 : IEquatable<Hash160>
     }
 }
 
-public class HexPattern
+public class HexConstraint
+{
+    public int? HighNibble;
+    public int? LowNibble;
+}
+
+public class GapConstraint
+{
+    public int Min;
+    public int Max = -1;
+}
+
+public class AltConstraint
+{
+    public byte[][] Alternatives = Array.Empty<byte[]>();
+}
+
+public class ParsedPattern
+{
+    public List<object> Elements = new();
+    public bool HasWildcards;
+    public byte[]? PrefixBytes;
+}
+
+public static class PatternCache
+{
+    private static readonly Dictionary<string, ParsedPattern> _cache = new();
+    private const int MaxSize = 2000;
+
+    public static ParsedPattern GetOrParse(string hexStr)
+    {
+        lock (_cache)
+        {
+            if (_cache.TryGetValue(hexStr, out var cached))
+                return cached;
+            var parsed = ParseHexPattern(hexStr);
+            if (_cache.Count < MaxSize)
+                _cache[hexStr] = parsed;
+            return parsed;
+        }
+    }
+
+    public static void Clear() { lock (_cache) _cache.Clear(); }
+
+    private static ParsedPattern ParseHexPattern(string hexStr)
+    {
+        var result = new ParsedPattern();
+        int i = 0;
+        while (i < hexStr.Length)
+        {
+            if (hexStr[i] == '*')
+            {
+                result.HasWildcards = true;
+                result.Elements.Add(new GapConstraint { Min = 0, Max = -1 });
+                i++;
+            }
+            else if (hexStr[i] == '(')
+            {
+                result.HasWildcards = true;
+                int end = hexStr.IndexOf(')', i);
+                if (end < 0) return result;
+                string altGroup = hexStr.Substring(i + 1, end - i - 1);
+                bool negate = altGroup.StartsWith('!');
+                if (negate) altGroup = altGroup.Substring(1);
+                bool isBoundary = altGroup == "B" || altGroup == "L" || altGroup == "W";
+                if (isBoundary)
+                {
+                    i = end + 1;
+                    continue;
+                }
+                var alts = altGroup.Split('|');
+                var altBytes = new List<byte[]>();
+                foreach (var alt in alts)
+                {
+                    var trimmed = alt.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        var parsedAlt = ParseHexOnly(trimmed);
+                        if (parsedAlt != null && parsedAlt.Length > 0)
+                            altBytes.Add(parsedAlt);
+                    }
+                }
+                if (altBytes.Count > 0 && !negate)
+                    result.Elements.Add(new AltConstraint { Alternatives = altBytes.ToArray() });
+                i = end + 1;
+            }
+            else if (hexStr[i] == '{')
+            {
+                result.HasWildcards = true;
+                int end = hexStr.IndexOf('}', i);
+                if (end < 0) return result;
+                string range = hexStr.Substring(i + 1, end - i - 1);
+                ParseRangeSt(range, out int min, out int max);
+                result.Elements.Add(new GapConstraint { Min = min, Max = max });
+                i = end + 1;
+            }
+            else if (hexStr[i] == '<')
+            {
+                int end = hexStr.IndexOf('>', i);
+                if (end < 0) return result;
+                i = end + 1;
+            }
+            else if (hexStr[i] == '[')
+            {
+                result.HasWildcards = true;
+                int end = hexStr.IndexOf(']', i);
+                if (end < 0) return result;
+                string range = hexStr.Substring(i + 1, end - i - 1);
+                if (range.Contains('-'))
+                {
+                    var parts2 = range.Split('-');
+                    int min2 = 0, max2 = 0;
+                    int.TryParse(parts2[0].Trim(), out min2);
+                    int.TryParse(parts2[1].Trim(), out max2);
+                    if (max2 >= min2)
+                        result.Elements.Add(new GapConstraint { Min = min2, Max = max2 });
+                }
+                i = end + 1;
+            }
+            else if (IsHexOrWildcardSt(hexStr[i]))
+            {
+                if (i + 1 < hexStr.Length && IsHexOrWildcardSt(hexStr[i + 1]))
+                {
+                    char c1 = hexStr[i];
+                    char c2 = hexStr[i + 1];
+                    {
+                        int? high = CharToNibbleSt(c1);
+                        int? low = CharToNibbleSt(c2);
+                        result.Elements.Add(new HexConstraint { HighNibble = high, LowNibble = low });
+                        result.HasWildcards = result.HasWildcards || !high.HasValue || !low.HasValue;
+                        i += 2;
+                        continue;
+                    }
+                }
+                i++;
+            }
+            else
+            {
+                i++;
+            }
+        }
+
+        for (int j = 0; j < result.Elements.Count; j++)
+        {
+            if (result.Elements[j] is HexConstraint hc && hc.HighNibble.HasValue && hc.LowNibble.HasValue)
+            {
+                byte b = (byte)((hc.HighNibble.Value << 4) | hc.LowNibble.Value);
+                int start = j;
+                int count = 0;
+                while (j + count < result.Elements.Count && result.Elements[j + count] is HexConstraint hc2 && hc2.HighNibble.HasValue && hc2.LowNibble.HasValue)
+                    count++;
+                if (count >= 2 && result.PrefixBytes == null)
+                {
+                    int prefixLen = Math.Min(count, 32);
+                    result.PrefixBytes = new byte[prefixLen];
+                    for (int k = 0; k < prefixLen; k++)
+                    {
+                        var h = (HexConstraint)result.Elements[j + k];
+                        if (h.HighNibble.HasValue && h.LowNibble.HasValue)
+                            result.PrefixBytes[k] = (byte)((h.HighNibble.Value << 4) | h.LowNibble.Value);
+                    }
+                }
+            }
+            else if (result.Elements[j] is GapConstraint || result.Elements[j] is AltConstraint)
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static bool IsHexCharSt(char c) =>
+        (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    private static bool IsHexOrWildcardSt(char c) => IsHexCharSt(c) || c == '?';
+    private static int? CharToNibbleSt(char c)
+    {
+        if (c == '?') return null;
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return null;
+    }
+
+    private static byte[]? ParseHexOnly(string hex)
+    {
+        if (hex.Length % 2 != 0) return null;
+        var bytes = new byte[hex.Length / 2];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (!byte.TryParse(hex.Substring(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+                return null;
+        }
+        return bytes;
+    }
+
+    private static void ParseRangeSt(string text, out int min, out int max)
+    {
+        min = 0; max = -1;
+        if (string.IsNullOrEmpty(text)) return;
+        int dashIdx = text.IndexOf('-');
+        if (dashIdx < 0)
+        {
+            int.TryParse(text, out min);
+            max = min;
+        }
+        else if (dashIdx == 0)
+        {
+            int.TryParse(text.AsSpan(1), out max);
+            min = 0;
+        }
+        else if (dashIdx == text.Length - 1)
+        {
+            int.TryParse(text.AsSpan(0, dashIdx), out min);
+            max = -1;
+        }
+        else
+        {
+            int.TryParse(text.AsSpan(0, dashIdx), out min);
+            int.TryParse(text.AsSpan(dashIdx + 1), out max);
+        }
+    }
+
+    public static bool MatchData(byte[] data, int startOffset, ParsedPattern pattern)
+    {
+        if (pattern.Elements.Count == 0) return false;
+        if (!pattern.HasWildcards && pattern.PrefixBytes != null)
+            return ContainsBytesSt(data, startOffset, pattern.PrefixBytes);
+        return MatchElements(pattern.Elements, 0, data, startOffset);
+    }
+
+    public static int CountMatches(byte[] data, int startOffset, ParsedPattern pattern)
+    {
+        int count = 0;
+        if (pattern.Elements.Count == 0) return 0;
+        if (!pattern.HasWildcards && pattern.PrefixBytes != null)
+        {
+            int end = data.Length - pattern.PrefixBytes.Length;
+            for (int i = startOffset; i <= end; i++)
+            {
+                bool match = true;
+                for (int j = 0; j < pattern.PrefixBytes.Length; j++)
+                    if (data[i + j] != pattern.PrefixBytes[j]) { match = false; break; }
+                if (match) count++;
+            }
+            return count;
+        }
+        for (int i = startOffset; i < data.Length; i++)
+        {
+            if (MatchElements(pattern.Elements, 0, data, i))
+                count++;
+        }
+        return count;
+    }
+
+    private static bool MatchElements(List<object> elements, int ei, byte[] data, int di)
+    {
+        if (ei == elements.Count) return true;
+        if (di > data.Length) return false;
+
+        var el = elements[ei];
+        if (el is HexConstraint hc)
+        {
+            if (di >= data.Length) return false;
+            byte b = data[di];
+            int hi = (b >> 4) & 0xF;
+            int lo = b & 0xF;
+            if (hc.HighNibble.HasValue && hc.HighNibble.Value != hi) return false;
+            if (hc.LowNibble.HasValue && hc.LowNibble.Value != lo) return false;
+            return MatchElements(elements, ei + 1, data, di + 1);
+        }
+        if (el is GapConstraint gap)
+        {
+            int max = gap.Max < 0 ? data.Length - di : Math.Min(gap.Max, data.Length - di);
+            if (gap.Min > max) return false;
+            for (int skip = gap.Min; skip <= max; skip++)
+            {
+                if (MatchElements(elements, ei + 1, data, di + skip))
+                    return true;
+            }
+            return false;
+        }
+        if (el is AltConstraint alt)
+        {
+            foreach (var a in alt.Alternatives)
+            {
+                if (di + a.Length > data.Length) continue;
+                bool match = true;
+                for (int j = 0; j < a.Length; j++)
+                    if (data[di + j] != a[j]) { match = false; break; }
+                if (match && MatchElements(elements, ei + 1, data, di + a.Length))
+                    return true;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    private static bool ContainsBytesSt(byte[] source, int startOff, byte[] pattern)
+    {
+        if (startOff + pattern.Length > source.Length) return false;
+        for (int i = startOff; i <= source.Length - pattern.Length; i++)
+        {
+            bool found = true;
+            for (int j = 0; j < pattern.Length; j++)
+                if (source[i + j] != pattern[j]) { found = false; break; }
+            if (found) return true;
+        }
+        return false;
+    }
+}
+
+public static class ExpressionEvaluator
+{
+    public static bool Evaluate(string expression, int[] matchCounts)
+    {
+        if (string.IsNullOrWhiteSpace(expression) || matchCounts == null) return false;
+        int pos = 0;
+        return ParseOr(expression, ref pos, matchCounts);
+    }
+
+    private static bool ParseOr(string expr, ref int pos, int[] counts)
+    {
+        bool value = ParseAnd(expr, ref pos, counts);
+        while (true)
+        {
+            SkipSpace(expr, ref pos);
+            if (pos < expr.Length && expr[pos] == '|')
+            {
+                pos++;
+                value = value || ParseAnd(expr, ref pos, counts);
+            }
+            else break;
+        }
+        return value;
+    }
+
+    private static bool ParseAnd(string expr, ref int pos, int[] counts)
+    {
+        bool value = ParsePrimary(expr, ref pos, counts);
+        while (true)
+        {
+            SkipSpace(expr, ref pos);
+            if (pos < expr.Length && expr[pos] == '&')
+            {
+                pos++;
+                value = value && ParsePrimary(expr, ref pos, counts);
+            }
+            else break;
+        }
+        return value;
+    }
+
+    private static bool ParsePrimary(string expr, ref int pos, int[] counts)
+    {
+        SkipSpace(expr, ref pos);
+        if (pos < expr.Length && expr[pos] == '(')
+        {
+            pos++;
+            bool inner = ParseOr(expr, ref pos, counts);
+            SkipSpace(expr, ref pos);
+            if (pos < expr.Length && expr[pos] == ')') pos++;
+            return inner;
+        }
+        return ParseIndexTerm(expr, ref pos, counts);
+    }
+
+    private static bool ParseIndexTerm(string expr, ref int pos, int[] counts)
+    {
+        SkipSpace(expr, ref pos);
+        int index = ParseNumber(expr, ref pos);
+        int c = (index >= 0 && index < counts.Length) ? counts[index] : 0;
+        SkipSpace(expr, ref pos);
+        if (pos >= expr.Length) return c > 0;
+
+        char op = expr[pos];
+        if (op != '=' && op != '<' && op != '>') return c > 0;
+        pos++;
+        SkipSpace(expr, ref pos);
+
+        int a = ParseNumber(expr, ref pos);
+        int? b = null;
+        SkipSpace(expr, ref pos);
+        if (pos < expr.Length && expr[pos] == ',')
+        {
+            pos++;
+            SkipSpace(expr, ref pos);
+            b = ParseNumber(expr, ref pos);
+        }
+
+        return op switch
+        {
+            '=' => !b.HasValue ? c == a : c >= a && c <= b.Value,
+            '>' => !b.HasValue ? c > a : c > a && c <= b.Value,
+            '<' => !b.HasValue ? c < a : c >= a && c < b.Value,
+            _ => c > 0
+        };
+    }
+
+    private static int ParseNumber(string expr, ref int pos)
+    {
+        SkipSpace(expr, ref pos);
+        int start = pos;
+        while (pos < expr.Length && char.IsDigit(expr[pos])) pos++;
+        if (start == pos) return 0;
+        int.TryParse(expr.Substring(start, pos - start), out int val);
+        return val;
+    }
+
+    private static void SkipSpace(string expr, ref int pos)
+    {
+        while (pos < expr.Length && char.IsWhiteSpace(expr[pos])) pos++;
+    }
+}
+
+public enum NdbOffsetType
+{
+    Any,
+    Absolute,
+    EntryPoint,
+    EndOfFile,
+    SectionIndex,
+    SectionLast,
+    VirtualImage
+}
+
+public class LdbSignature
 {
     public string Name { get; set; } = string.Empty;
-    public byte[] Pattern { get; set; } = Array.Empty<byte>();
-    public string Offset { get; set; } = "*";
+    public string LogicalExpression { get; set; } = string.Empty;
+    public List<ParsedPattern> SubPatterns { get; set; } = new();
     public uint TargetType { get; set; }
-    public bool IsPrefixOnly { get; set; }
-    public byte[]? PrefixPattern { get; set; }
-    public byte[]? SuffixPattern { get; set; }
-    public int MinOffset { get; set; }
-    public int MaxOffset { get; set; } = -1;
+    public int MinEngineLevel { get; set; }
+    public int MaxEngineLevel { get; set; } = 255;
+    public long MinFileSize { get; set; }
+    public long MaxFileSize { get; set; } = long.MaxValue;
+
+    public bool Match(byte[] data, List<ThreatDetail> existingThreats, long fileSize)
+    {
+        if (fileSize < MinFileSize || fileSize > MaxFileSize) return false;
+        int[] counts = new int[SubPatterns.Count];
+        for (int i = 0; i < SubPatterns.Count; i++)
+            counts[i] = PatternCache.CountMatches(data, 0, SubPatterns[i]);
+        return ExpressionEvaluator.Evaluate(LogicalExpression, counts);
+    }
 }
 
 public class ScanOptions
@@ -136,6 +570,18 @@ public class ScanOptions
     public int MaxFiles { get; set; } = 10000;
 }
 
+public class StoredPattern
+{
+    public string Name { get; set; } = string.Empty;
+    public uint TargetType { get; set; }
+    public NdbOffsetType OffsetType { get; set; } = NdbOffsetType.Any;
+    public int OffsetValue { get; set; }
+    public int MaxShift { get; set; } = -1;
+    public int MinOffset { get; set; }
+    public int MaxOffset { get; set; } = -1;
+    public ParsedPattern Parsed { get; set; } = new();
+}
+
 public class ClamAvEngine
 {
     private readonly Dictionary<Hash128, string> _md5Signatures = new();
@@ -143,7 +589,8 @@ public class ClamAvEngine
     private readonly Dictionary<Hash160, string> _sha1Signatures = new();
     private readonly Dictionary<Hash128, string> _sectionMd5Signatures = new();
     private readonly Dictionary<Hash256, string> _sectionSha256Signatures = new();
-    private readonly List<HexPattern> _hexPatterns = new();
+    private readonly List<StoredPattern> _storedPatterns = new();
+    private readonly List<LdbSignature> _ldbSignatures = new();
     private readonly HashSet<string> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
@@ -176,11 +623,11 @@ public class ClamAvEngine
         byte[] eicarPattern = Encoding.ASCII.GetBytes(
             "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
 
-        _hexPatterns.Add(new HexPattern
+        var eicarParsed = PatternCache.GetOrParse(ConvertToHexString(eicarPattern));
+        _storedPatterns.Add(new StoredPattern
         {
             Name = "Eicar-Test-Signature",
-            Pattern = eicarPattern,
-            Offset = "*"
+            Parsed = eicarParsed
         });
 
         _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
@@ -199,10 +646,12 @@ public class ClamAvEngine
             _sha1Signatures.Clear();
             _sectionMd5Signatures.Clear();
             _sectionSha256Signatures.Clear();
-            _hexPatterns.Clear();
+            _storedPatterns.Clear();
+            _ldbSignatures.Clear();
             _fpHashes.Clear();
             _ignoredSigs.Clear();
             _acEngine.Clear();
+            PatternCache.Clear();
             _namePool.Clear();
             _totalSignatures = 0;
             _dbBuildTime = null;
@@ -326,27 +775,29 @@ public class ClamAvEngine
         string offset = parts[2].Trim();
         string hexPatternStr = parts[3].Trim();
 
-        var (prefix, isPrefixOnly) = ParseHexPatternAdvanced(hexPatternStr);
-        if (prefix.Length == 0) return 0;
+        var parsed = PatternCache.GetOrParse(hexPatternStr);
+        if (parsed.Elements.Count == 0) return 0;
 
-        var pattern = new HexPattern
-        {
-            Name = name,
-            Pattern = prefix,
-            Offset = offset,
-            TargetType = targetType,
-            IsPrefixOnly = isPrefixOnly,
-            MinOffset = ParseOffset(offset, out var maxOff),
-            MaxOffset = maxOff
-        };
+        var offType = ParseOffset(offset, out var offVal, out var maxShift, out var minOff, out var maxOff);
 
-        // Redundancy check: only add to sequential search list if it requires special offset or has wildcards
-        if (isPrefixOnly || offset != "*")
+        if (!parsed.HasWildcards && offType == NdbOffsetType.Any && parsed.PrefixBytes != null)
         {
-            _hexPatterns.Add(pattern);
+            _acEngine.AddPattern(parsed.PrefixBytes, name);
         }
-        if (!isPrefixOnly)
-            _acEngine.AddPattern(prefix, name);
+        else
+        {
+            _storedPatterns.Add(new StoredPattern
+            {
+                Name = name,
+                TargetType = targetType,
+                OffsetType = offType,
+                OffsetValue = offVal,
+                MaxShift = maxShift,
+                MinOffset = minOff,
+                MaxOffset = maxOff,
+                Parsed = parsed
+            });
+        }
         return 1;
     }
 
@@ -355,37 +806,77 @@ public class ClamAvEngine
         var parts = line.Split(';');
         if (parts.Length < 4) return 0;
 
-        var headerParts = parts[0].Split(':');
-        string name = Intern(headerParts[0].Trim());
+        string name = Intern(parts[0].Trim());
+        string targetBlock = parts[1].Trim();
+        string logicalExpr = parts[2].Trim();
 
-        string longestHexPattern = "";
-        for (int i = 3; i < parts.Length; i++)
+        uint targetType = 0;
+        int minEngine = 0;
+        int maxEngine = 255;
+        long minFileSize = 0;
+        long maxFileSize = long.MaxValue;
+
+        foreach (var kv in targetBlock.Split(','))
         {
-            string p = parts[i].Trim();
-            if (p.Length > longestHexPattern.Length)
+            var kvParts = kv.Split(':');
+            if (kvParts.Length != 2) continue;
+            string key = kvParts[0].Trim();
+            string val = kvParts[1].Trim();
+
+            switch (key)
             {
-                longestHexPattern = p;
+                case "Target":
+                    uint.TryParse(val, out targetType);
+                    break;
+                case "Engine":
+                    var range = val.Split('-');
+                    if (range.Length == 2)
+                    {
+                        int.TryParse(range[0], out minEngine);
+                        int.TryParse(range[1], out maxEngine);
+                    }
+                    break;
+                case "FileSize":
+                    var fsRange = val.Split('-');
+                    if (fsRange.Length == 2)
+                    {
+                        long.TryParse(fsRange[0], out minFileSize);
+                        long.TryParse(fsRange[1], out maxFileSize);
+                    }
+                    break;
             }
         }
 
-        if (longestHexPattern.Length == 0) return 0;
-
-        var (prefix, isPrefixOnly) = ParseHexPatternAdvanced(longestHexPattern);
-        if (prefix.Length == 0) return 0;
-
-        if (isPrefixOnly)
+        var subPatterns = new List<ParsedPattern>();
+        for (int i = 3; i < parts.Length; i++)
         {
-            _hexPatterns.Add(new HexPattern
+            string hexPart = parts[i].Trim();
+            if (hexPart.Contains(':'))
             {
-                Name = name,
-                Pattern = prefix,
-                Offset = "*"
-            });
+                var offsetParts = hexPart.Split(':');
+                hexPart = offsetParts[^1].Trim();
+            }
+            if (hexPart.Length < 4) continue;
+
+            var parsed = PatternCache.GetOrParse(hexPart);
+            if (parsed.Elements.Count > 0)
+                subPatterns.Add(parsed);
         }
-        else
+
+        if (subPatterns.Count == 0) return 0;
+
+        _ldbSignatures.Add(new LdbSignature
         {
-            _acEngine.AddPattern(prefix, name);
-        }
+            Name = name,
+            LogicalExpression = logicalExpr,
+            SubPatterns = subPatterns,
+            TargetType = targetType,
+            MinEngineLevel = minEngine,
+            MaxEngineLevel = maxEngine,
+            MinFileSize = minFileSize,
+            MaxFileSize = maxFileSize
+        });
+
         return 1;
     }
 
@@ -435,103 +926,101 @@ public class ClamAvEngine
         string name = Intern(parts[0].Trim());
         string hexPatternStr = parts[1].Trim();
 
-        var (pattern, isPrefixOnly) = ParseHexPatternAdvanced(hexPatternStr);
-        if (pattern.Length == 0) return 0;
+        var parsed = PatternCache.GetOrParse(hexPatternStr);
+        if (parsed.Elements.Count == 0 || parsed.PrefixBytes == null) return 0;
 
-        if (isPrefixOnly)
-        {
-            _hexPatterns.Add(new HexPattern
-            {
-                Name = name,
-                Pattern = pattern,
-                Offset = "*"
-            });
-        }
+        if (!parsed.HasWildcards)
+            _acEngine.AddPattern(parsed.PrefixBytes, name);
         else
         {
-            _acEngine.AddPattern(pattern, name);
+            _storedPatterns.Add(new StoredPattern
+            {
+                Name = name,
+                Parsed = parsed
+            });
         }
         return 1;
     }
 
-    private (byte[] prefix, bool isPrefixOnly) ParseHexPatternAdvanced(string hexStr)
+    private static NdbOffsetType ParseOffset(string offsetStr, out int offsetValue, out int maxShift, out int minOffset, out int maxOffset)
     {
-        if (string.IsNullOrEmpty(hexStr))
-            return (Array.Empty<byte>(), true);
-
-        if (hexStr.Contains('*') || hexStr.Contains('?') ||
-            hexStr.Contains('(') || hexStr.Contains('{') ||
-            hexStr.Contains('[') || hexStr.Contains('<'))
-        {
-            int wildcardPos = hexStr.IndexOfAny(new[] { '*', '?', '(', '{', '[', '<' });
-            if (wildcardPos > 0 && wildcardPos >= 4)
-            {
-                string prefixStr = hexStr.Substring(0, wildcardPos);
-                if (wildcardPos % 2 != 0)
-                    prefixStr = hexStr.Substring(0, wildcardPos - 1);
-
-                try
-                {
-                    var prefixBytes = HexToBytes(prefixStr);
-                    return (prefixBytes, true);
-                }
-                catch
-                {
-                    return (Array.Empty<byte>(), true);
-                }
-            }
-            return (Array.Empty<byte>(), true);
-        }
-
-        try
-        {
-            return (HexToBytes(hexStr), false);
-        }
-        catch
-        {
-            return (Array.Empty<byte>(), true);
-        }
-    }
-
-    private static byte[] HexToBytes(string hexStr)
-    {
-        int len = hexStr.Length;
-        if (len % 2 != 0) return Array.Empty<byte>();
-        byte[] bytes = new byte[len / 2];
-        for (int i = 0; i < len; i += 2)
-            bytes[i / 2] = Convert.ToByte(hexStr.Substring(i, 2), 16);
-        return bytes;
-    }
-
-    private static int ParseOffset(string offsetStr, out int maxOffset)
-    {
+        offsetValue = 0;
+        maxShift = -1;
+        minOffset = 0;
         maxOffset = -1;
-        if (string.IsNullOrEmpty(offsetStr)) return 0;
-        if (offsetStr == "*") return 0;
 
-        if (int.TryParse(offsetStr, out int abs))
+        if (string.IsNullOrEmpty(offsetStr) || offsetStr == "*")
+            return NdbOffsetType.Any;
+
+        if (offsetStr.StartsWith("EP+"))
         {
-            maxOffset = abs;
-            return abs;
+            var rest = offsetStr.AsSpan(3);
+            var colonIdx = rest.IndexOf(':');
+            if (colonIdx >= 0)
+            {
+                int.TryParse(rest[..colonIdx], out offsetValue);
+                int.TryParse(rest[(colonIdx + 1)..], out maxShift);
+            }
+            else
+            {
+                int.TryParse(rest, out offsetValue);
+            }
+            return NdbOffsetType.EntryPoint;
         }
 
-        if (offsetStr.StartsWith("EOF-") && int.TryParse(offsetStr.AsSpan(4), out int _))
+        if (offsetStr.StartsWith("EP-") && int.TryParse(offsetStr.AsSpan(3), out offsetValue))
+            return NdbOffsetType.EntryPoint;
+
+        if (offsetStr.StartsWith("EOF-"))
         {
-            return 0;
+            int.TryParse(offsetStr.AsSpan(4), out offsetValue);
+            return NdbOffsetType.EndOfFile;
         }
+
+        if (offsetStr.StartsWith("EOF+") && int.TryParse(offsetStr.AsSpan(4), out offsetValue))
+            return NdbOffsetType.EndOfFile;
+
+        if (offsetStr.StartsWith("S") && offsetStr.Length > 2 && offsetStr[1] is >= '0' and <= '9')
+        {
+            var sSpan = offsetStr.AsSpan(1);
+            var plusIdx = sSpan.IndexOf('+');
+            if (plusIdx > 0 && int.TryParse(sSpan[..plusIdx], out offsetValue))
+            {
+                int.TryParse(sSpan[(plusIdx + 1)..], out var secOff);
+                offsetValue = secOff;
+                return NdbOffsetType.SectionIndex;
+            }
+        }
+
+        if (offsetStr.StartsWith("SL+") && int.TryParse(offsetStr.AsSpan(3), out offsetValue))
+            return NdbOffsetType.SectionLast;
+
+        if (offsetStr.Equals("VI", StringComparison.OrdinalIgnoreCase))
+            return NdbOffsetType.VirtualImage;
 
         if (offsetStr.Contains(','))
         {
             var range = offsetStr.Split(',');
             if (range.Length == 2)
             {
-                int.TryParse(range[0], out int min);
-                int.TryParse(range[1], out maxOffset);
-                return min;
+                int.TryParse(range[0], out minOffset);
+                if (int.TryParse(range[1], out maxOffset))
+                {
+                    maxShift = maxOffset;
+                    return NdbOffsetType.Absolute;
+                }
             }
         }
 
-        return 0;
+        if (int.TryParse(offsetStr, out int abs))
+        {
+            offsetValue = abs;
+            minOffset = abs;
+            maxOffset = abs;
+            return NdbOffsetType.Absolute;
+        }
+
+        return NdbOffsetType.Any;
     }
 
     public void SetDbBuildTime(DateTime buildTime)
@@ -746,30 +1235,51 @@ public class ClamAvEngine
                 }
             }
 
-            foreach (var hexPattern in _hexPatterns)
+            int fileTargetType = GetFileTargetType(filePath);
+            int? entryPointOff = null;
+            foreach (var sp in _storedPatterns)
             {
                 if (threats.Count > 0 && !options.AllMatchMode) return;
 
-                if (hexPattern.TargetType != 0 && hexPattern.TargetType != (uint)GetFileTargetType(filePath))
+                if (sp.TargetType != 0 && sp.TargetType != (uint)fileTargetType)
                     continue;
 
-                if (hexPattern.MinOffset > 0 && hexPattern.MaxOffset >= hexPattern.MinOffset)
+                if (!TryResolveSearchRegion(fileBytes, sp, ref entryPointOff, out int searchStart, out int searchLen))
+                    continue;
+
+                if (searchLen <= 0) continue;
+
+                if (searchStart == 0 && searchLen == fileBytes.Length)
                 {
-                    int startOff = Math.Min(hexPattern.MinOffset, fileBytes.Length);
-                    int endOff = Math.Min(hexPattern.MaxOffset + hexPattern.Pattern.Length, fileBytes.Length);
-                    int regionLen = endOff - startOff;
-                    if (regionLen > 0 && hexPattern.Pattern.Length <= regionLen)
-                    {
-                        byte[] region = new byte[regionLen];
-                        Array.Copy(fileBytes, startOff, region, 0, regionLen);
-                        if (SearchBytes(region, hexPattern.Pattern))
-                            AddPatternThreat(threats, filePath, hexPattern, options);
-                    }
+                    if (PatternCache.MatchData(fileBytes, 0, sp.Parsed))
+                        AddStoredPatternThreat(threats, filePath, sp, options);
                 }
                 else
                 {
-                    if (SearchBytes(fileBytes, hexPattern.Pattern))
-                        AddPatternThreat(threats, filePath, hexPattern, options);
+                    byte[] region = new byte[searchLen];
+                    Array.Copy(fileBytes, searchStart, region, 0, searchLen);
+                    if (PatternCache.MatchData(region, 0, sp.Parsed))
+                        AddStoredPatternThreat(threats, filePath, sp, options);
+                }
+            }
+
+            foreach (var ldb in _ldbSignatures)
+            {
+                if (threats.Count > 0 && !options.AllMatchMode) return;
+                if (IsIgnored(ldb.Name)) continue;
+                if (threats.Exists(t => t.ThreatName == ldb.Name)) continue;
+                if (ldb.TargetType != 0 && ldb.TargetType != (uint)fileTargetType) continue;
+
+                if (ldb.Match(fileBytes, threats, fileBytes.Length))
+                {
+                    threats.Add(new ThreatDetail
+                    {
+                        FilePath = filePath,
+                        ThreatName = ldb.Name,
+                        Severity = DetermineSeverity(ldb.Name),
+                        MatchType = "Logical"
+                    });
+                    if (!options.AllMatchMode) return;
                 }
             }
 
@@ -806,6 +1316,97 @@ public class ClamAvEngine
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error scanning file {filePath}: {ex.Message}");
+        }
+    }
+
+    private static bool TryResolveSearchRegion(byte[] fileBytes, StoredPattern sp, ref int? entryPointOff,
+        out int searchStart, out int searchLen)
+    {
+        searchStart = 0;
+        searchLen = fileBytes.Length;
+
+        switch (sp.OffsetType)
+        {
+            case NdbOffsetType.Any:
+                return true;
+
+            case NdbOffsetType.Absolute:
+                if (sp.MinOffset > 0 && sp.MaxOffset >= sp.MinOffset)
+                {
+                    searchStart = Math.Min(sp.MinOffset, fileBytes.Length);
+                    int endOff = Math.Min(sp.MaxOffset + (sp.Parsed.PrefixBytes?.Length ?? 0), fileBytes.Length);
+                    searchLen = endOff - searchStart;
+                    return searchLen > 0;
+                }
+                return true;
+
+            case NdbOffsetType.EndOfFile:
+                searchStart = Math.Max(0, fileBytes.Length - sp.OffsetValue);
+                searchLen = fileBytes.Length - searchStart;
+                return searchLen > 0;
+
+            case NdbOffsetType.EntryPoint:
+                if (fileBytes.Length < 2 || fileBytes[0] != 0x4D || fileBytes[1] != 0x5A)
+                    return false;
+                if (entryPointOff == null)
+                    entryPointOff = GetPeEntryPointOffset(fileBytes);
+                if (entryPointOff < 0)
+                    return false;
+                int epBase = entryPointOff.Value + sp.OffsetValue;
+                if (sp.MaxShift > 0)
+                {
+                    searchStart = Math.Min(epBase, fileBytes.Length);
+                    int endOff = Math.Min(epBase + sp.MaxShift + (sp.Parsed.PrefixBytes?.Length ?? 0), fileBytes.Length);
+                    searchLen = endOff - searchStart;
+                }
+                else
+                {
+                    searchStart = Math.Min(epBase, fileBytes.Length);
+                    searchLen = Math.Min(sp.Parsed.PrefixBytes?.Length ?? 1, fileBytes.Length - searchStart);
+                }
+                return searchLen > 0;
+
+            default:
+                return true;
+        }
+    }
+
+    private static int GetPeEntryPointOffset(byte[] data)
+    {
+        try
+        {
+            if (data.Length < 0x40) return -1;
+            int peOffset = BitConverter.ToInt32(data, 0x3C);
+            if (peOffset <= 0 || peOffset + 64 >= data.Length) return -1;
+            if (data[peOffset] != 0x50 || data[peOffset + 1] != 0x45) return -1;
+
+            ushort sections = BitConverter.ToUInt16(data, peOffset + 6);
+            ushort optHdrSize = BitConverter.ToUInt16(data, peOffset + 20);
+
+            int entryPointRva;
+            int optHdrStart = peOffset + 24;
+            if (optHdrStart + 20 >= data.Length) return -1;
+
+            entryPointRva = BitConverter.ToInt32(data, optHdrStart + 16);
+
+            int sectionTableOff = optHdrStart + optHdrSize;
+            int sectionEntrySize = 40;
+            for (int i = 0; i < sections; i++)
+            {
+                int secOff = sectionTableOff + i * sectionEntrySize;
+                if (secOff + 24 >= data.Length) return -1;
+                int virtAddr = BitConverter.ToInt32(data, secOff + 12);
+                int virtSize = BitConverter.ToInt32(data, secOff + 8);
+                int rawOff = BitConverter.ToInt32(data, secOff + 20);
+
+                if (virtSize > 0 && entryPointRva >= virtAddr && entryPointRva < virtAddr + virtSize)
+                    return rawOff + (entryPointRva - virtAddr);
+            }
+            return -1;
+        }
+        catch
+        {
+            return -1;
         }
     }
 
@@ -1251,7 +1852,7 @@ public class ClamAvEngine
         }
     }
 
-    private void AddPatternThreat(List<ThreatDetail> threats, string filePath, HexPattern pattern, ScanOptions options)
+    private void AddStoredPatternThreat(List<ThreatDetail> threats, string filePath, StoredPattern pattern, ScanOptions options)
     {
         if (IsIgnored(pattern.Name)) return;
         if (threats.Exists(t => t.ThreatName == pattern.Name)) return;
@@ -1326,102 +1927,6 @@ public class ClamAvEngine
         foreach (byte b in bytes)
             sb.Append(b.ToString("x2"));
         return sb.ToString();
-    }
-
-    private static bool SearchBytes(byte[] source, byte[] pattern)
-    {
-        if (pattern.Length == 0 || source.Length < pattern.Length) return false;
-
-        if (pattern.Length >= 4)
-            return BoyerMooreSearch(source, pattern);
-
-        for (int i = 0; i <= source.Length - pattern.Length; i++)
-        {
-            bool match = true;
-            for (int j = 0; j < pattern.Length; j++)
-            {
-                if (source[i + j] != pattern[j])
-                {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) return true;
-        }
-        return false;
-    }
-
-    private static bool BoyerMooreSearch(byte[] source, byte[] pattern)
-    {
-        int patternLen = pattern.Length;
-        int sourceLen = source.Length;
-
-        int[] badCharShift = new int[256];
-        for (int i = 0; i < 256; i++)
-            badCharShift[i] = patternLen;
-        for (int i = 0; i < patternLen - 1; i++)
-            badCharShift[pattern[i]] = patternLen - 1 - i;
-
-        int[] goodSuffixShift = new int[patternLen + 1];
-        ComputeGoodSuffixTable(pattern, goodSuffixShift);
-
-        int j = 0;
-        while (j <= sourceLen - patternLen)
-        {
-            int i = patternLen - 1;
-            while (i >= 0 && pattern[i] == source[j + i])
-                i--;
-
-            if (i < 0) return true;
-
-            j += Math.Max(goodSuffixShift[patternLen - 1 - i], badCharShift[source[j + i]] - (patternLen - 1 - i));
-        }
-        return false;
-    }
-
-    private static void ComputeGoodSuffixTable(byte[] pattern, int[] shift)
-    {
-        int m = pattern.Length;
-        int[] suffix = new int[m + 1];
-
-        suffix[m - 1] = m;
-        int g = m - 1;
-        int f = 0;
-
-        for (int i = m - 2; i >= 0; i--)
-        {
-            if (i > g && suffix[i + m - 1 - f] < i - g)
-            {
-                suffix[i] = suffix[i + m - 1 - f];
-            }
-            else
-            {
-                g = Math.Min(g, i);
-                f = i;
-                while (g >= 0 && pattern[g] == pattern[g + m - 1 - f])
-                    g--;
-                suffix[i] = f - g;
-            }
-        }
-
-        for (int i = 0; i < m; i++)
-            shift[i] = m;
-
-        int j = 0;
-        for (int i = m - 1; i >= 0; i--)
-        {
-            if (suffix[i] == i + 1)
-            {
-                for (; j < m - 1 - i; j++)
-                {
-                    if (shift[j] == m)
-                        shift[j] = m - 1 - i;
-                }
-            }
-        }
-
-        for (int i = 0; i <= m - 2; i++)
-            shift[m - 1 - suffix[i]] = m - 1 - i;
     }
 
     private static string SanitizeFileName(string fileName)
