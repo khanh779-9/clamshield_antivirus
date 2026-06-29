@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Linq;
+using System.Threading;
 using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.IO.Compression;
@@ -26,6 +27,9 @@ public class ScanOptions
 {
     public bool AllMatchMode { get; set; }
     public bool HeuristicAlerts { get; set; } = true;
+    public bool AlertPdf { get; set; } = false;
+    public bool AlertMacros { get; set; } = false;
+    public bool AlertSwf { get; set; } = false;
     public bool ParseArchives { get; set; } = true;
     public bool ParsePe { get; set; } = true;
     public bool ParsePdf { get; set; } = true;
@@ -53,7 +57,7 @@ public class ClamAvEngine
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
 
-    private static readonly object _lock = new();
+    private readonly ReaderWriterLockSlim _engineLock = new();
     private int _totalSignatures;
     private DateTime? _dbBuildTime;
 
@@ -67,28 +71,26 @@ public class ClamAvEngine
 
     private void InitializeDefaultSignatures()
     {
-        lock (_lock)
+        byte[] eicarPattern = Encoding.ASCII.GetBytes(
+            "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
+
+        _hexPatterns.Add(new HexPattern
         {
-            byte[] eicarPattern = Encoding.ASCII.GetBytes(
-                "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
+            Name = "Eicar-Test-Signature",
+            Pattern = eicarPattern,
+            Offset = "*"
+        });
 
-            _hexPatterns.Add(new HexPattern
-            {
-                Name = "Eicar-Test-Signature",
-                Pattern = eicarPattern,
-                Offset = "*"
-            });
+        _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
 
-            _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
-
-            _md5Signatures["44d88612fea8a8f36de82e1278abb02f"] = "Eicar-Test-Signature-MD5";
-            _sha256Signatures["275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"] = "Eicar-Test-Signature-SHA256";
-        }
+        _md5Signatures["44d88612fea8a8f36de82e1278abb02f"] = "Eicar-Test-Signature-MD5";
+        _sha256Signatures["275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"] = "Eicar-Test-Signature-SHA256";
     }
 
     public void Clear()
     {
-        lock (_lock)
+        _engineLock.EnterWriteLock();
+        try
         {
             _md5Signatures.Clear();
             _sha256Signatures.Clear();
@@ -103,6 +105,10 @@ public class ClamAvEngine
             _dbBuildTime = null;
             InitializeDefaultSignatures();
         }
+        finally
+        {
+            _engineLock.ExitWriteLock();
+        }
     }
 
     public int LoadSignaturesFromContent(string fileName, string content)
@@ -112,29 +118,35 @@ public class ClamAvEngine
 
         using var reader = new StringReader(content);
         string? line;
-        while ((line = reader.ReadLine()) != null)
-        {
-            line = line.Trim();
-            if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith(';'))
-                continue;
 
-            try
-            {
-                loaded += LoadSignatureLine(ext, line);
-            }
-            catch
-            {
-            }
-        }
-
-        if (loaded > 0)
+        _engineLock.EnterWriteLock();
+        try
         {
-            lock (_lock)
+            while ((line = reader.ReadLine()) != null)
+            {
+                line = line.Trim();
+                if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith(';'))
+                    continue;
+
+                try
+                {
+                    loaded += LoadSignatureLine(ext, line);
+                }
+                catch
+                {
+                }
+            }
+
+            if (loaded > 0)
             {
                 _totalSignatures += loaded;
             }
+            return loaded;
         }
-        return loaded;
+        finally
+        {
+            _engineLock.ExitWriteLock();
+        }
     }
 
     private int LoadSignatureLine(string ext, string line)
@@ -166,40 +178,37 @@ public class ClamAvEngine
         string hash = parts[0].Trim();
         string name = parts[parts.Length - 1].Trim();
 
-        lock (_lock)
+        int expectedLen = hashType switch
         {
-            int expectedLen = hashType switch
-            {
-                HashType.MD5 => 32,
-                HashType.SHA1 => 40,
-                HashType.SHA256 => 64,
-                _ => 0
-            };
+            HashType.MD5 => 32,
+            HashType.SHA1 => 40,
+            HashType.SHA256 => 64,
+            _ => 0
+        };
 
-            if (hash.Length == expectedLen && !string.IsNullOrEmpty(name))
+        if (hash.Length == expectedLen && !string.IsNullOrEmpty(name))
+        {
+            if (isSectionHash)
             {
-                if (isSectionHash)
+                var dict = hashType switch
                 {
-                    var dict = hashType switch
-                    {
-                        HashType.MD5 => _sectionMd5Signatures,
-                        HashType.SHA256 => _sectionSha256Signatures,
-                        _ => _sectionMd5Signatures
-                    };
-                    dict[hash] = name;
-                }
-                else
-                {
-                    var dict = hashType switch
-                    {
-                        HashType.MD5 => _md5Signatures,
-                        HashType.SHA256 => _sha256Signatures,
-                        _ => _md5Signatures
-                    };
-                    dict[hash] = name;
-                }
-                return 1;
+                    HashType.MD5 => _sectionMd5Signatures,
+                    HashType.SHA256 => _sectionSha256Signatures,
+                    _ => _sectionMd5Signatures
+                };
+                dict[hash] = name;
             }
+            else
+            {
+                var dict = hashType switch
+                {
+                    HashType.MD5 => _md5Signatures,
+                    HashType.SHA256 => _sha256Signatures,
+                    _ => _md5Signatures
+                };
+                dict[hash] = name;
+            }
+            return 1;
         }
         return 0;
     }
@@ -231,12 +240,9 @@ public class ClamAvEngine
             MaxOffset = maxOff
         };
 
-        lock (_lock)
-        {
-            _hexPatterns.Add(pattern);
-            if (!isPrefixOnly)
-                _acEngine.AddPattern(prefix, name);
-        }
+        _hexPatterns.Add(pattern);
+        if (!isPrefixOnly)
+            _acEngine.AddPattern(prefix, name);
         return 1;
     }
 
@@ -254,16 +260,13 @@ public class ClamAvEngine
         var (prefix, _) = ParseHexPatternAdvanced(hexPatternStr);
         if (prefix.Length == 0) return 0;
 
-        lock (_lock)
+        _hexPatterns.Add(new HexPattern
         {
-            _hexPatterns.Add(new HexPattern
-            {
-                Name = name,
-                Pattern = prefix,
-                Offset = "*"
-            });
-            _acEngine.AddPattern(prefix, name);
-        }
+            Name = name,
+            Pattern = prefix,
+            Offset = "*"
+        });
+        _acEngine.AddPattern(prefix, name);
         return 1;
     }
 
@@ -273,16 +276,13 @@ public class ClamAvEngine
         if (parts.Length < 5) return 0;
 
         string name = parts[0].Trim();
-        lock (_lock)
+        _hexPatterns.Add(new HexPattern
         {
-            _hexPatterns.Add(new HexPattern
-            {
-                Name = name,
-                Pattern = Encoding.ASCII.GetBytes(name),
-                Offset = "*"
-            });
-            _acEngine.AddPattern(Encoding.ASCII.GetBytes(name), name);
-        }
+            Name = name,
+            Pattern = Encoding.ASCII.GetBytes(name),
+            Offset = "*"
+        });
+        _acEngine.AddPattern(Encoding.ASCII.GetBytes(name), name);
         return 1;
     }
 
@@ -294,10 +294,7 @@ public class ClamAvEngine
         string hash = parts[0].Trim();
         if (hash.Length == 32 || hash.Length == 40 || hash.Length == 64)
         {
-            lock (_lock)
-            {
-                _fpHashes.Add(hash);
-            }
+            _fpHashes.Add(hash);
             return 1;
         }
         return 0;
@@ -311,10 +308,7 @@ public class ClamAvEngine
         string sigName = parts[0].Trim();
         if (!string.IsNullOrEmpty(sigName))
         {
-            lock (_lock)
-            {
-                _ignoredSigs.Add(sigName);
-            }
+            _ignoredSigs.Add(sigName);
             return 1;
         }
         return 0;
@@ -331,16 +325,13 @@ public class ClamAvEngine
         var (pattern, _) = ParseHexPatternAdvanced(hexPatternStr);
         if (pattern.Length == 0) return 0;
 
-        lock (_lock)
+        _hexPatterns.Add(new HexPattern
         {
-            _hexPatterns.Add(new HexPattern
-            {
-                Name = name,
-                Pattern = pattern,
-                Offset = "*"
-            });
-            _acEngine.AddPattern(pattern, name);
-        }
+            Name = name,
+            Pattern = pattern,
+            Offset = "*"
+        });
+        _acEngine.AddPattern(pattern, name);
         return 1;
     }
 
@@ -426,30 +417,56 @@ public class ClamAvEngine
 
     public void SetDbBuildTime(DateTime buildTime)
     {
-        lock (_lock)
+        _engineLock.EnterWriteLock();
+        try
         {
             _dbBuildTime = buildTime;
+        }
+        finally
+        {
+            _engineLock.ExitWriteLock();
+        }
+    }
+
+    public void Compile()
+    {
+        _engineLock.EnterWriteLock();
+        try
+        {
+            _acEngine.BuildFailureLinks();
+        }
+        finally
+        {
+            _engineLock.ExitWriteLock();
         }
     }
 
     public List<ThreatDetail> ScanFile(string filePath, ScanOptions? options = null)
     {
-        options ??= new ScanOptions();
-        var threats = new List<ThreatDetail>();
+        _engineLock.EnterReadLock();
+        try
+        {
+            options ??= new ScanOptions();
+            var threats = new List<ThreatDetail>();
 
-        if (!File.Exists(filePath)) return threats;
+            if (!File.Exists(filePath)) return threats;
 
-        var fileInfo = new FileInfo(filePath);
-        if (fileInfo.Length > options.MaxFileSize) return threats;
+            var fileInfo = new FileInfo(filePath);
+            if (fileInfo.Length > options.MaxFileSize) return threats;
 
-        var recursionCtx = new RecursionContext(
-            options.MaxRecursion,
-            options.MaxFiles,
-            options.MaxScanSize,
-            options.MaxFileSize);
+            var recursionCtx = new RecursionContext(
+                options.MaxRecursion,
+                options.MaxFiles,
+                options.MaxScanSize,
+                options.MaxFileSize);
 
-        ScanFileInternal(filePath, options, threats, recursionCtx, 0);
-        return threats;
+            ScanFileInternal(filePath, options, threats, recursionCtx, 0);
+            return threats;
+        }
+        finally
+        {
+            _engineLock.ExitReadLock();
+        }
     }
 
     private void ScanFileInternal(
@@ -582,97 +599,89 @@ public class ClamAvEngine
 
             if (threats.Count > 0 && !options.AllMatchMode) return;
 
-            lock (_lock)
-            {
-                if (IsFalsePositive(md5Hash, sha256Hash, sha1Hash))
-                    return;
+            if (IsFalsePositive(md5Hash, sha256Hash, sha1Hash))
+                return;
 
-                CheckHashSignatures(threats, filePath, md5Hash, sha256Hash, sha1Hash, options);
+            CheckHashSignatures(threats, filePath, md5Hash, sha256Hash, sha1Hash, options);
+            if (threats.Count > 0 && !options.AllMatchMode) return;
+
+            if (options.ParsePe && fileType == ClamFileType.MSEXE)
+            {
+                ScanPeFile(filePath, threats, options);
+                if (threats.Count > 0 && !options.AllMatchMode) return;
+            }
+
+            var acMatches = _acEngine.Search(fileBytes);
+            foreach (var match in acMatches)
+            {
+                if (!IsIgnored(match) && !threats.Exists(t => t.ThreatName == match))
+                {
+                    threats.Add(new ThreatDetail
+                    {
+                        FilePath = filePath,
+                        ThreatName = match,
+                        Severity = DetermineSeverity(match),
+                        MatchType = "Content"
+                    });
+                    if (!options.AllMatchMode) return;
+                }
+            }
+
+            foreach (var hexPattern in _hexPatterns)
+            {
                 if (threats.Count > 0 && !options.AllMatchMode) return;
 
-                if (options.ParsePe && fileType == ClamFileType.MSEXE)
+                if (hexPattern.TargetType != 0 && hexPattern.TargetType != (uint)GetFileTargetType(filePath))
+                    continue;
+
+                if (hexPattern.MinOffset > 0 && hexPattern.MaxOffset >= hexPattern.MinOffset)
                 {
-                    ScanPeFile(filePath, threats, options);
-                    if (threats.Count > 0 && !options.AllMatchMode) return;
-                }
-
-                var acMatches = _acEngine.Search(fileBytes);
-                foreach (var match in acMatches)
-                {
-                    if (!IsIgnored(match) && !threats.Exists(t => t.ThreatName == match))
+                    int startOff = Math.Min(hexPattern.MinOffset, fileBytes.Length);
+                    int endOff = Math.Min(hexPattern.MaxOffset + hexPattern.Pattern.Length, fileBytes.Length);
+                    int regionLen = endOff - startOff;
+                    if (regionLen > 0 && hexPattern.Pattern.Length <= regionLen)
                     {
-                        threats.Add(new ThreatDetail
-                        {
-                            FilePath = filePath,
-                            ThreatName = match,
-                            Severity = DetermineSeverity(match),
-                            MatchType = "Content"
-                        });
-                        if (!options.AllMatchMode) return;
-                    }
-                }
-
-                foreach (var hexPattern in _hexPatterns)
-                {
-                    if (threats.Count > 0 && !options.AllMatchMode) return;
-
-                    if (hexPattern.TargetType != 0 && hexPattern.TargetType != (uint)GetFileTargetType(filePath))
-                        continue;
-
-                    if (hexPattern.MinOffset > 0 && hexPattern.MaxOffset >= hexPattern.MinOffset)
-                    {
-                        int startOff = Math.Min(hexPattern.MinOffset, fileBytes.Length);
-                        int endOff = Math.Min(hexPattern.MaxOffset + hexPattern.Pattern.Length, fileBytes.Length);
-                        int regionLen = endOff - startOff;
-                        if (regionLen > 0 && hexPattern.Pattern.Length <= regionLen)
-                        {
-                            byte[] region = new byte[regionLen];
-                            Array.Copy(fileBytes, startOff, region, 0, regionLen);
-                            if (SearchBytes(region, hexPattern.Pattern))
-                                AddPatternThreat(threats, filePath, hexPattern, options);
-                        }
-                    }
-                    else
-                    {
-                        if (SearchBytes(fileBytes, hexPattern.Pattern))
+                        byte[] region = new byte[regionLen];
+                        Array.Copy(fileBytes, startOff, region, 0, regionLen);
+                        if (SearchBytes(region, hexPattern.Pattern))
                             AddPatternThreat(threats, filePath, hexPattern, options);
                     }
                 }
-
-                if (options.ParsePdf && fileType == ClamFileType.PDF)
+                else
                 {
-                    ScanPdfContent(fileBytes, filePath, threats, options);
+                    if (SearchBytes(fileBytes, hexPattern.Pattern))
+                        AddPatternThreat(threats, filePath, hexPattern, options);
                 }
+            }
 
-                if (options.ParseHtml && fileType == ClamFileType.HTML)
-                {
-                    ScanHtmlContent(fileBytes, filePath, threats, options);
-                }
+            if (options.ParsePdf && fileType == ClamFileType.PDF)
+            {
+                ScanPdfContent(fileBytes, filePath, threats, options);
+            }
 
-                if (options.ParseOle2 && fileType == ClamFileType.MSOLE2)
-                {
-                    ScanOle2Content(fileBytes, filePath, threats, options);
-                }
+            if (options.ParseHtml && fileType == ClamFileType.HTML)
+            {
+                ScanHtmlContent(fileBytes, filePath, threats, options);
+            }
 
-                if (options.ParseMail && fileType == ClamFileType.MAIL)
-                {
-                    ScanMailContent(fileBytes, filePath, threats, options);
-                }
+            if (options.ParseOle2 && fileType == ClamFileType.MSOLE2)
+            {
+                ScanOle2Content(fileBytes, filePath, threats, options);
+            }
 
-                if (options.ParseRtf && fileType == ClamFileType.RTF)
-                {
-                    ScanRtfContent(fileBytes, filePath, threats, options);
-                }
+            if (options.ParseMail && fileType == ClamFileType.MAIL)
+            {
+                ScanMailContent(fileBytes, filePath, threats, options);
+            }
 
-                if (options.ParseSwf && fileType == ClamFileType.SWF)
-                {
-                    ScanSwfContent(fileBytes, filePath, threats, options);
-                }
+            if (options.ParseRtf && fileType == ClamFileType.RTF)
+            {
+                ScanRtfContent(fileBytes, filePath, threats, options);
+            }
 
-                if (options.ParseElf && fileType == ClamFileType.ELF)
-                {
-                    ScanElfContent(fileBytes, filePath, threats, options);
-                }
+            if (options.ParseSwf && fileType == ClamFileType.SWF)
+            {
+                ScanSwfContent(fileBytes, filePath, threats, options);
             }
         }
         catch (Exception ex)
@@ -781,7 +790,7 @@ public class ClamAvEngine
                     }
                 }
 
-                if (section.IsSuspicious && options.HeuristicAlerts)
+                if (section.IsSuspicious && options.HeuristicAlerts && !IsIgnored($"Heuristic.PE.SuspiciousSection.{section.Name}"))
                 {
                     if (!threats.Exists(t => t.ThreatName == $"Heuristic.PE.SuspiciousSection.{section.Name}"))
                     {
@@ -796,17 +805,6 @@ public class ClamAvEngine
                     }
                 }
             }
-
-            if (peInfo.HasTls && peInfo.HasResource && options.HeuristicAlerts)
-            {
-                threats.Add(new ThreatDetail
-                {
-                    FilePath = filePath,
-                    ThreatName = "Heuristic.PE.Malformed.TLSandResource",
-                    Severity = "High",
-                    MatchType = "Heuristic"
-                });
-            }
         }
         catch
         {
@@ -815,12 +813,15 @@ public class ClamAvEngine
 
     private void ScanPdfContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts || !options.AlertPdf) return;
+
         try
         {
             string content = Encoding.ASCII.GetString(data);
 
-            if (content.Contains("/JavaScript", StringComparison.OrdinalIgnoreCase) ||
-                content.Contains("/JS", StringComparison.OrdinalIgnoreCase))
+            if ((content.Contains("/JavaScript", StringComparison.OrdinalIgnoreCase) ||
+                 content.Contains("/JS", StringComparison.OrdinalIgnoreCase)) &&
+                !IsIgnored("Heuristic.PDF.ContainsJavaScript"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -832,7 +833,8 @@ public class ClamAvEngine
                 if (!options.AllMatchMode) return;
             }
 
-            if (content.Contains("/Launch", StringComparison.OrdinalIgnoreCase))
+            if (content.Contains("/Launch", StringComparison.OrdinalIgnoreCase) &&
+                !IsIgnored("Heuristic.PDF.HasLaunchAction"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -844,8 +846,9 @@ public class ClamAvEngine
                 if (!options.AllMatchMode) return;
             }
 
-            if (content.Contains("/EmbeddedFile", StringComparison.OrdinalIgnoreCase) ||
-                content.Contains("/EF", StringComparison.OrdinalIgnoreCase))
+            if ((content.Contains("/EmbeddedFile", StringComparison.OrdinalIgnoreCase) ||
+                 content.Contains("/EF", StringComparison.OrdinalIgnoreCase)) &&
+                !IsIgnored("Heuristic.PDF.ContainsEmbeddedFile"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -857,7 +860,8 @@ public class ClamAvEngine
                 if (!options.AllMatchMode) return;
             }
 
-            if (content.Contains("/AA") || content.Contains("/OpenAction"))
+            if ((content.Contains("/AA") || content.Contains("/OpenAction")) &&
+                !IsIgnored("Heuristic.PDF.AutoActionWithExec"))
             {
                 if (content.Contains("/JavaScript", StringComparison.OrdinalIgnoreCase) ||
                     content.Contains("/Launch", StringComparison.OrdinalIgnoreCase))
@@ -879,6 +883,8 @@ public class ClamAvEngine
 
     private void ScanHtmlContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts) return;
+
         try
         {
             string content = Encoding.UTF8.GetString(data);
@@ -895,7 +901,8 @@ public class ClamAvEngine
 
                     if (script.Contains("eval(", StringComparison.OrdinalIgnoreCase) &&
                         (script.Contains("fromCharCode", StringComparison.OrdinalIgnoreCase) ||
-                         script.Contains("unescape", StringComparison.OrdinalIgnoreCase)))
+                         script.Contains("unescape", StringComparison.OrdinalIgnoreCase)) &&
+                        !IsIgnored("Heuristic.HTML.ObfuscatedScript"))
                     {
                         threats.Add(new ThreatDetail
                         {
@@ -908,7 +915,8 @@ public class ClamAvEngine
                     }
 
                     if (script.Contains("document.write", StringComparison.OrdinalIgnoreCase) &&
-                        script.Contains("decompression", StringComparison.OrdinalIgnoreCase))
+                        script.Contains("decompression", StringComparison.OrdinalIgnoreCase) &&
+                        !IsIgnored("Heuristic.HTML.ScriptDecompression"))
                     {
                         threats.Add(new ThreatDetail
                         {
@@ -934,11 +942,18 @@ public class ClamAvEngine
 
                     string iframe = content.Substring(idx, end - idx);
 
-                    if (iframe.Contains("srcdoc", StringComparison.OrdinalIgnoreCase) ||
-                        (iframe.Contains("width", StringComparison.OrdinalIgnoreCase) &&
-                         iframe.Contains("0", StringComparison.OrdinalIgnoreCase) &&
-                         iframe.Contains("height", StringComparison.OrdinalIgnoreCase) &&
-                         iframe.Contains("0", StringComparison.OrdinalIgnoreCase)))
+                    bool zeroWidth = iframe.Contains("width=\"0\"", StringComparison.OrdinalIgnoreCase) || 
+                                     iframe.Contains("width='0'", StringComparison.OrdinalIgnoreCase) ||
+                                     iframe.Contains("width:0", StringComparison.OrdinalIgnoreCase) ||
+                                     iframe.Contains("width: 0", StringComparison.OrdinalIgnoreCase);
+
+                    bool zeroHeight = iframe.Contains("height=\"0\"", StringComparison.OrdinalIgnoreCase) || 
+                                      iframe.Contains("height='0'", StringComparison.OrdinalIgnoreCase) ||
+                                      iframe.Contains("height:0", StringComparison.OrdinalIgnoreCase) ||
+                                      iframe.Contains("height: 0", StringComparison.OrdinalIgnoreCase);
+
+                    if ((iframe.Contains("srcdoc", StringComparison.OrdinalIgnoreCase) || (zeroWidth && zeroHeight)) &&
+                        !IsIgnored("Heuristic.HTML.SuspiciousIframe"))
                     {
                         threats.Add(new ThreatDetail
                         {
@@ -961,6 +976,8 @@ public class ClamAvEngine
 
     private void ScanOle2Content(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts || !options.AlertMacros) return;
+
         try
         {
             string content = Encoding.ASCII.GetString(data);
@@ -969,7 +986,8 @@ public class ClamAvEngine
                 (content.Contains("Auto_Open", StringComparison.OrdinalIgnoreCase) ||
                  content.Contains("AutoOpen", StringComparison.OrdinalIgnoreCase) ||
                  content.Contains("Workbook_Open", StringComparison.OrdinalIgnoreCase) ||
-                 content.Contains("Document_Open", StringComparison.OrdinalIgnoreCase)))
+                 content.Contains("Document_Open", StringComparison.OrdinalIgnoreCase)) &&
+                !IsIgnored("Heuristic.OLE2.AutoOpenMacro"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -987,6 +1005,8 @@ public class ClamAvEngine
 
     private void ScanMailContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts) return;
+
         try
         {
             string content = Encoding.UTF8.GetString(data);
@@ -994,15 +1014,16 @@ public class ClamAvEngine
             if (content.Contains("Content-Type: multipart/mixed", StringComparison.OrdinalIgnoreCase) ||
                 content.Contains("Content-Type: multipart/related", StringComparison.OrdinalIgnoreCase))
             {
-                if (content.Contains("Content-Disposition: attachment", StringComparison.OrdinalIgnoreCase) ||
-                    content.Contains("name=", StringComparison.OrdinalIgnoreCase) &&
+                if ((content.Contains("Content-Disposition: attachment", StringComparison.OrdinalIgnoreCase) ||
+                     content.Contains("name=", StringComparison.OrdinalIgnoreCase)) &&
                     (content.Contains(".exe", StringComparison.OrdinalIgnoreCase) ||
                      content.Contains(".vbs", StringComparison.OrdinalIgnoreCase) ||
                      content.Contains(".scr", StringComparison.OrdinalIgnoreCase) ||
                      content.Contains(".pif", StringComparison.OrdinalIgnoreCase) ||
                      content.Contains(".bat", StringComparison.OrdinalIgnoreCase) ||
                      content.Contains(".cmd", StringComparison.OrdinalIgnoreCase) ||
-                     content.Contains(".js", StringComparison.OrdinalIgnoreCase)))
+                     content.Contains(".js", StringComparison.OrdinalIgnoreCase)) &&
+                    !IsIgnored("Heuristic.Mail.ExecutableAttachment"))
                 {
                     threats.Add(new ThreatDetail
                     {
@@ -1021,12 +1042,15 @@ public class ClamAvEngine
 
     private void ScanRtfContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts || !options.AlertMacros) return;
+
         try
         {
             string content = Encoding.ASCII.GetString(data);
 
             if (content.Contains("\\objdata", StringComparison.OrdinalIgnoreCase) &&
-                content.Contains("\\objclass", StringComparison.OrdinalIgnoreCase))
+                content.Contains("\\objclass", StringComparison.OrdinalIgnoreCase) &&
+                !IsIgnored("Heuristic.RTF.EmbeddedObject"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -1039,7 +1063,8 @@ public class ClamAvEngine
             }
 
             if (content.Contains("\\objdata", StringComparison.OrdinalIgnoreCase) &&
-                content.Contains("Equation.3", StringComparison.OrdinalIgnoreCase))
+                content.Contains("Equation.3", StringComparison.OrdinalIgnoreCase) &&
+                !IsIgnored("Heuristic.RTF.EquationEditor"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -1057,6 +1082,8 @@ public class ClamAvEngine
 
     private void ScanSwfContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
     {
+        if (!options.HeuristicAlerts || !options.AlertSwf) return;
+
         try
         {
             if (data.Length < 8) return;
@@ -1086,9 +1113,10 @@ public class ClamAvEngine
 
             string content = Encoding.ASCII.GetString(swfData);
 
-            if (content.Contains("ActionScript", StringComparison.OrdinalIgnoreCase) ||
-                content.Contains("asfunction", StringComparison.OrdinalIgnoreCase) ||
-                content.Contains("getURL", StringComparison.OrdinalIgnoreCase))
+            if ((content.Contains("ActionScript", StringComparison.OrdinalIgnoreCase) ||
+                 content.Contains("asfunction", StringComparison.OrdinalIgnoreCase) ||
+                 content.Contains("getURL", StringComparison.OrdinalIgnoreCase)) &&
+                !IsIgnored("Heuristic.SWF.ContainsActionScript"))
             {
                 threats.Add(new ThreatDetail
                 {
@@ -1096,44 +1124,6 @@ public class ClamAvEngine
                     ThreatName = "Heuristic.SWF.ContainsActionScript",
                     Severity = DetermineSeverity("Heuristic"),
                     MatchType = "SWF"
-                });
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    private void ScanElfContent(byte[] data, string filePath, List<ThreatDetail> threats, ScanOptions options)
-    {
-        try
-        {
-            if (data.Length < 64) return;
-
-            byte eiClass = data[4];
-            byte eiData = data[5];
-            byte eiOsabi = data[7];
-
-            if (eiOsabi == 0x03)
-            {
-                threats.Add(new ThreatDetail
-                {
-                    FilePath = filePath,
-                    ThreatName = "Heuristic.ELF.Linux",
-                    Severity = "Low",
-                    MatchType = "ELF"
-                });
-                if (!options.AllMatchMode) return;
-            }
-
-            if (data[16] == 0x02 && data[17] == 0x00)
-            {
-                threats.Add(new ThreatDetail
-                {
-                    FilePath = filePath,
-                    ThreatName = "Heuristic.ELF.ExecutableType",
-                    Severity = "Low",
-                    MatchType = "ELF"
                 });
             }
         }
@@ -1365,39 +1355,45 @@ public class AhoCorasickEngine
         _built = false;
     }
 
-    private void BuildFailureLinks()
+    private readonly object _buildLock = new();
+
+    public void BuildFailureLinks()
     {
         if (_built) return;
-
-        var queue = new Queue<AcNode>();
-
-        foreach (var child in _root.Children)
+        lock (_buildLock)
         {
-            child.Value.Failure = _root;
-            queue.Enqueue(child.Value);
-        }
+            if (_built) return;
 
-        while (queue.Count > 0)
-        {
-            var current = queue.Dequeue();
+            var queue = new Queue<AcNode>();
 
-            foreach (var child in current.Children)
+            foreach (var child in _root.Children)
             {
-                var failNode = current.Failure ?? _root;
-
-                while (failNode != null && !failNode.Children.ContainsKey(child.Key))
-                    failNode = failNode.Failure ?? _root;
-
-                child.Value.Failure = failNode?.Children.GetValueOrDefault(child.Key) ?? _root;
-
-                if (child.Value.Failure != null)
-                    child.Value.Outputs.AddRange(child.Value.Failure.Outputs);
-
+                child.Value.Failure = _root;
                 queue.Enqueue(child.Value);
             }
-        }
 
-        _built = true;
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+
+                foreach (var child in current.Children)
+                {
+                    var failNode = current.Failure ?? _root;
+
+                    while (failNode != null && !failNode.Children.ContainsKey(child.Key))
+                        failNode = failNode.Failure ?? _root;
+
+                    child.Value.Failure = failNode?.Children.GetValueOrDefault(child.Key) ?? _root;
+
+                    if (child.Value.Failure != null)
+                        child.Value.Outputs.AddRange(child.Value.Failure.Outputs);
+
+                    queue.Enqueue(child.Value);
+                }
+            }
+
+            _built = true;
+        }
     }
 
     public List<string> Search(byte[] text)

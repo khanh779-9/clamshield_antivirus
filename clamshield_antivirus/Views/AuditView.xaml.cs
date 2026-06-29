@@ -22,11 +22,11 @@ public partial class AuditView : UserControl
             try
             {
                 Clipboard.SetText(commandText);
-                MessageBox.Show("Command copied to clipboard.", "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
+                ModernMessageBox.Show("Command copied to clipboard.", "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to copy command: {ex.Message}", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show($"Failed to copy command: {ex.Message}", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

@@ -9,6 +9,7 @@ using System.Windows.Input;
 using Microsoft.Win32;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Models;
+using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus.ViewModels;
 
@@ -104,7 +105,7 @@ public class LogsViewModel : ViewModelBase
     {
         if (_allLogs.Count == 0) return;
 
-        var result = MessageBox.Show(
+        var result = ModernMessageBox.Show(
             "Are you sure you want to permanently delete all scan and update logs? This cannot be undone.",
             "Clear Logs",
             MessageBoxButton.YesNo,
@@ -137,11 +138,11 @@ public class LogsViewModel : ViewModelBase
                 string details = SelectedLog.Details;
                 string fileName = dialog.FileName;
                 await Task.Run(() => File.WriteAllText(fileName, details));
-                MessageBox.Show("Log exported successfully.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                ModernMessageBox.Show("Log exported successfully.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to export log: {ex.Message}", "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show($"Failed to export log: {ex.Message}", "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -153,11 +154,11 @@ public class LogsViewModel : ViewModelBase
         try
         {
             Clipboard.SetText(SelectedLog.Details);
-            MessageBox.Show("Log details copied to clipboard.", "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show("Log details copied to clipboard.", "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to copy log: {ex.Message}", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show($"Failed to copy log: {ex.Message}", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

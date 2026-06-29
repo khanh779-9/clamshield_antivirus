@@ -75,7 +75,7 @@ public partial class App : Application
 
         RealTimeMonitor.ThreatDetected += (filePath, threatName) =>
         {
-            TrayService?.ShowThreatNotification(filePath, threatName);
+            clamshield_antivirus.Views.PopupAlert.ShowAlert(filePath, threatName);
             _ = Task.Run(async () =>
             {
                 try

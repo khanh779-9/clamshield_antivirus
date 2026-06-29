@@ -53,6 +53,9 @@ public class ClamAvService
             MaxRecursion = _settingsService.Get("MaxRecursion", 16),
             MaxFiles = _settingsService.Get("MaxFiles", 10000),
             HeuristicAlerts = _settingsService.Get("HeuristicAlerts", true),
+            AlertPdf = _settingsService.Get("AlertPdf", false),
+            AlertMacros = _settingsService.Get("AlertMacros", false),
+            AlertSwf = _settingsService.Get("AlertSwf", false),
             ParseArchives = _settingsService.Get("ParseArchives", true),
             ParsePe = _settingsService.Get("ParsePe", true),
             ParsePdf = _settingsService.Get("ParsePdf", true),
@@ -111,38 +114,54 @@ public class ClamAvService
                 int totalFiles = fileList.Count;
 
                 DateTime lastReportTime = DateTime.MinValue;
+                object reportLock = new object();
+                object logLock = new object();
 
-                for (int i = 0; i < totalFiles; i++)
+                var parallelOptions = new ParallelOptions
                 {
-                    if (cancellationToken.IsCancellationRequested)
-                        break;
+                    MaxDegreeOfParallelism = Environment.ProcessorCount,
+                    CancellationToken = cancellationToken
+                };
 
-                    string currentFile = fileList[i];
-                    filesScanned++;
-
+                Parallel.ForEach(fileList, parallelOptions, (currentFile) =>
+                {
                     var fileInfo = new FileInfo(currentFile);
                     if (fileInfo.Length > scanOptions.MaxFileSize)
                     {
-                        rawLogBuilder.AppendLine($"{currentFile}: SKIPPED (exceeds max file size limit of {FormatFileSize(scanOptions.MaxFileSize)})");
-                        continue;
+                        lock (logLock)
+                        {
+                            rawLogBuilder.AppendLine($"{currentFile}: SKIPPED (exceeds max file size limit of {FormatFileSize(scanOptions.MaxFileSize)})");
+                        }
+                        return;
                     }
-                    totalBytesScanned += fileInfo.Length;
+
+                    int currentFilesScanned = Interlocked.Increment(ref filesScanned);
+                    Interlocked.Add(ref totalBytesScanned, fileInfo.Length);
 
                     DateTime now = DateTime.UtcNow;
-                    if (now - lastReportTime > TimeSpan.FromMilliseconds(50) || i == totalFiles - 1)
+                    bool shouldReport = false;
+                    lock (reportLock)
                     {
-                        double percentage = totalFiles > 0 ? ((double)filesScanned / totalFiles) * 100 : 0;
+                        if (now - lastReportTime > TimeSpan.FromMilliseconds(100) || currentFilesScanned == totalFiles)
+                        {
+                            shouldReport = true;
+                            lastReportTime = now;
+                        }
+                    }
+
+                    if (shouldReport)
+                    {
+                        double percentage = totalFiles > 0 ? ((double)currentFilesScanned / totalFiles) * 100 : 0;
                         progress.Report(new ScanProgress
                         {
                             CurrentFile = currentFile,
-                            FilesScanned = filesScanned,
+                            FilesScanned = currentFilesScanned,
                             ProgressPercentage = percentage,
                             IsIndeterminate = false,
-                            StatusText = $"Scanning ({filesScanned}/{totalFiles})...",
-                            BytesScanned = totalBytesScanned,
-                            ThreatsFoundSoFar = threatsFound
+                            StatusText = $"Scanning ({currentFilesScanned}/{totalFiles})...",
+                            BytesScanned = Interlocked.Read(ref totalBytesScanned),
+                            ThreatsFoundSoFar = Interlocked.CompareExchange(ref threatsFound, 0, 0)
                         });
-                        lastReportTime = now;
                     }
 
                     var threats = App.Engine.ScanFile(currentFile, scanOptions);
@@ -150,15 +169,18 @@ public class ClamAvService
                     {
                         foreach (var threat in threats)
                         {
-                            threatsFound++;
+                            Interlocked.Increment(ref threatsFound);
                             lock (result.Threats)
                             {
                                 result.Threats.Add(threat);
                             }
-                            rawLogBuilder.AppendLine($"{currentFile}: {threat.ThreatName} FOUND");
+                            lock (logLock)
+                            {
+                                rawLogBuilder.AppendLine($"{currentFile}: {threat.ThreatName} FOUND");
+                            }
                         }
                     }
-                }
+                });
             }, cancellationToken);
 
             stopwatch.Stop();
@@ -378,6 +400,7 @@ public class ClamAvService
                         catch { }
                     }
                 }
+                App.Engine.Compile();
                 _signaturesLoaded = true;
             }
             catch (Exception ex)

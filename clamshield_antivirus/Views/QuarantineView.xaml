@@ -9,136 +9,214 @@
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:QuarantineViewModel}">
 
+    <UserControl.Resources>
+        <Style x:Key="RowText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+
+        <Style x:Key="RowActionButton" TargetType="Button">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="12"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid Margin="24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
-            <StackPanel>
-                <TextBlock Text="Quarantine Storage" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Secure storage for isolated threats" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
-            </StackPanel>
-        </Grid>
-
-        <!-- Storage info card -->
-        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,20" Padding="16">
+        <!-- Row 0: Header + summary card in container -->
+        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,16">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="🛡️" FontSize="36" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="Total Storage Size" Style="{StaticResource CardSubtitle}"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                        <TextBlock Text="{Binding TotalSizeText}" Style="{StaticResource CardTitle}" FontSize="18" FontWeight="Bold"/>
-                        <TextBlock Text="•" Foreground="{StaticResource DimTextBrush}" Margin="8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ItemCountText}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="14" VerticalAlignment="Center"/>
-                    </StackPanel>
+                <TextBlock Grid.Column="0" Text="🛡️" Style="{StaticResource CardIcon}"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <TextBlock Text="Quarantine Storage" Style="{StaticResource HeadingText}" FontSize="18"/>
+                    <TextBlock Text="Secure storage for isolated threats" Style="{StaticResource SubheadingText}" Margin="0,2,0,0"/>
                 </StackPanel>
-                <Button Grid.Column="2" Content="Clear Old Items (>30 days)" Style="{StaticResource SecondaryButton}" 
-                        Command="{Binding ClearOldCommand}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Clear All" Style="{StaticResource DangerButton}" Padding="12,7"
+                            Command="{Binding ClearAllCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Clear Old (30d+)" Style="{StaticResource SecondaryButton}" Padding="12,7"
+                            Command="{Binding ClearOldCommand}"/>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Search & Control row -->
-        <Grid Grid.Row="2" Margin="0,0,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
-                     Tag="Search by threat name or path..."
-                     BorderBrush="{StaticResource BorderBrush}"/>
-            
-            <Button Grid.Column="1" Content="⟳" Style="{StaticResource IconButton}" FontSize="18" Margin="8,0,0,0"
-                    Command="{Binding RefreshCommand}"/>
-        </Grid>
+        <!-- Row 1: Stats + Search + Delete Selected -->
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="12" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <!-- Quarantine List Box -->
-        <Grid Grid.Row="3">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding TotalSizeText}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}"/>
+                    <TextBlock Text="•" Foreground="{StaticResource DimTextBrush}" Margin="8,0"/>
+                    <TextBlock Text="{Binding ItemCountText}" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="Delete Selected" Style="{StaticResource SecondaryButton}" Padding="10,5" FontSize="11"
+                        Command="{Binding DeleteSelectedCommand}" Margin="16,0,0,0" Height="28"/>
+
+                <TextBox Grid.Column="2" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
+                         Tag="Search by threat name or path..." Margin="16,0,0,0"
+                         BorderBrush="{StaticResource BorderBrush}" Height="28" VerticalContentAlignment="Center"/>
+
+                <Button Grid.Column="3" Content="⟳" Style="{StaticResource IconButton}" FontSize="14" Margin="6,0,0,0"
+                        Command="{Binding RefreshCommand}" Width="28" Height="28"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 2: Table -->
+        <Grid Grid.Row="2">
             <!-- Empty state -->
-            <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource BorderBrush}" Background="{StaticResource SidebarBgBrush}"
-                    Visibility="{Binding Entries.Count, Converter={StaticResource InvBoolToVis}}">
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" BorderBrush="{StaticResource BorderBrush}" Background="{StaticResource SidebarBgBrush}"
+                    Visibility="{Binding HasEntries, Converter={StaticResource InvBoolToVis}}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="🛡️" FontSize="48" Opacity="0.4" HorizontalAlignment="Center"/>
-                    <TextBlock Text="No quarantined files" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,0" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Your system is secure and clean of isolated threats" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="🛡️" FontSize="40" Opacity="0.35" HorizontalAlignment="Center"/>
+                    <TextBlock Text="No quarantined files" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Your system is secure and clean of isolated threats" Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
-            <!-- Entries List -->
-            <ListBox ItemsSource="{Binding Entries}" 
-                     SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
-                     Background="Transparent" BorderThickness="0"
-                     Visibility="{Binding Entries.Count, Converter={StaticResource CountToVis}}"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="BorderThickness" Value="0"/>
-                        <Setter Property="Margin" Value="0,0,0,8"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="border" Style="{StaticResource CardStyle}" Padding="12" Background="{StaticResource CardBgBrush}">
-                                        <ContentPresenter/>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="border" Property="Background" Value="{StaticResource CardBgHoverBrush}"/>
-                                        </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                            <Setter TargetName="border" Property="Background" Value="{StaticResource SurfaceBrush}"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type models:QuarantineEntry}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            
-                            <!-- Metadata -->
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding ThreatName}" FontWeight="Bold" Foreground="{StaticResource ErrorBrush}" FontSize="14"/>
-                                <TextBlock Text="{Binding OriginalPath}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="{Binding QuarantineDate, StringFormat='Isolated: {0:yyyy-MM-dd HH:mm}'}" FontSize="10" Foreground="{StaticResource DimTextBrush}"/>
-                                    <TextBlock Text="•" Foreground="{StaticResource DimTextBrush}" Margin="6,0" FontSize="10"/>
-                                    <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConv}}" FontSize="10" Foreground="{StaticResource DimTextBrush}"/>
-                                </StackPanel>
-                            </StackPanel>
+            <!-- Table -->
+            <Border Style="{StaticResource CardStyle}" Padding="0"
+                    Visibility="{Binding HasEntries, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <ListView ItemsSource="{Binding Entries}"
+                               SelectedItem="{Binding SelectedEntry, Mode=TwoWay}"
+                               Background="Transparent" BorderThickness="0"
+                               ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                               ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListView.View>
+                            <GridView>
+                                <!-- Column 0: Checkbox -->
+                                <GridViewColumn Width="40">
+                                    <GridViewColumnHeader HorizontalContentAlignment="Center">
+                                        <CheckBox IsChecked="{Binding SelectAllChecked}" 
+                                                  Focusable="False" HorizontalAlignment="Center"/>
+                                    </GridViewColumnHeader>
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <CheckBox IsChecked="{Binding IsSelected}" 
+                                                      Focusable="False" HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
 
-                            <!-- Quick inline actions -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="Restore" Style="{StaticResource SecondaryButton}" Padding="12,6" Margin="0,0,8,0"
-                                        Command="{Binding DataContext.RestoreCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
-                                <Button Content="Delete" Style="{StaticResource DangerButton}" Padding="12,6"
-                                        Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
-                            </StackPanel>
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+                                <!-- Column 1: File Name -->
+                                <GridViewColumn Header="File Name" Width="160">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileName}" Style="{StaticResource RowText}"
+                                                       FontWeight="SemiBold" Foreground="{StaticResource PrimaryTextBrush}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- Column 2: Original Location -->
+                                <GridViewColumn Header="Original Location" Width="240">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <TextBlock Text="{Binding OriginalPath}" ToolTip="{Binding OriginalPath}" Style="{StaticResource RowText}"
+                                                       Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- Column 3: Threat Name -->
+                                <GridViewColumn Header="Threat Name" Width="140">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <TextBlock Text="{Binding ThreatName}" ToolTip="{Binding ThreatName}" Style="{StaticResource RowText}"
+                                                       Foreground="{StaticResource ErrorBrush}" FontWeight="SemiBold"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- Column 4: Date Isolated -->
+                                <GridViewColumn Header="Date Isolated" Width="110">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <TextBlock Text="{Binding QuarantineDate, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" Style="{StaticResource RowText}"
+                                                       Foreground="{StaticResource DimTextBrush}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- Column 5: Size -->
+                                <GridViewColumn Header="Size" Width="65">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConv}}" Style="{StaticResource RowText}"
+                                                       Foreground="{StaticResource DimTextBrush}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+
+                                <!-- Column 6: Actions -->
+                                <GridViewColumn Header="" Width="135">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate DataType="{x:Type models:QuarantineEntry}">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button Content="Restore" Style="{StaticResource RowActionButton}"
+                                                        Background="{StaticResource AccentBrush}" Foreground="White"
+                                                        Command="{Binding DataContext.RestoreCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                                <Button Content="Delete" Style="{StaticResource RowActionButton}"
+                                                        Background="#44D32F2F" Foreground="{StaticResource ErrorBrush}"
+                                                        Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                </Grid>
+            </Border>
         </Grid>
 
-        <!-- Selected item details bar -->
-        <Border Grid.Row="4" Style="{StaticResource CardStyle}" BorderBrush="{StaticResource AccentBrush}" Margin="0,16,0,0" Padding="12"
+        <!-- Row 3: Detail bar -->
+        <Border Grid.Row="3" Style="{StaticResource CardStyle}" BorderBrush="{StaticResource AccentBrush}" Margin="0,12,0,0" Padding="12"
                 Visibility="{Binding IsEntrySelected, Converter={StaticResource BoolToVis}}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -150,9 +228,9 @@
                     <TextBlock Text="{Binding SelectedEntry.OriginalPath}" FontSize="11" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="🛡️ Restore File" Style="{StaticResource AccentButton}" Padding="16,8" Margin="0,0,10,0"
+                    <Button Content="Restore File" Style="{StaticResource AccentButton}" Padding="14,7" Margin="0,0,8,0"
                             Command="{Binding RestoreCommand}"/>
-                    <Button Content="🗑️ Delete Permanently" Style="{StaticResource DangerButton}" Padding="16,8"
+                    <Button Content="Delete Permanently" Style="{StaticResource DangerButton}" Padding="14,7"
                             Command="{Binding DeleteCommand}"/>
                 </StackPanel>
             </Grid>

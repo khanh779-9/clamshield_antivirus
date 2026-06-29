@@ -17,11 +17,29 @@ public class PeSectionInfo
     public string Sha1Hash { get; set; } = string.Empty;
     public string Sha256Hash { get; set; } = string.Empty;
     public double Entropy { get; set; }
-    public bool IsSuspicious =>
-        (RawSize > 0 && VirtualSize > RawSize * 2) ||
-        (Characteristics & 0x80000000) == 0 ||
-        Entropy > 7.5 ||
-        (Name.Contains(".", StringComparison.Ordinal) && !Name.StartsWith("."));
+    public bool IsSuspicious
+    {
+        get
+        {
+            // 1. Writable and Executable section (highly suspicious code injection/packer characteristic)
+            // MEM_WRITE = 0x80000000, MEM_EXECUTE = 0x20000000
+            bool isWritableAndExecutable = (Characteristics & 0x80000000) != 0 && (Characteristics & 0x20000000) != 0;
+
+            // 2. Virtual size is excessively larger than raw size (e.g. VirtualSize > RawSize * 10, common in packers)
+            // only alert if the section is of significant size to avoid false positives on small stub sections.
+            bool isVirtualSizeAnomaly = RawSize > 0 && VirtualSize > RawSize * 10 && VirtualSize > 100 * 1024;
+
+            // 3. Extremely high entropy specifically on code/text sections (e.g. entropy > 7.9)
+            // which strongly indicates packed/encrypted code, as opposed to normal resources.
+            bool isHighEntropyCode = (Name.Equals(".text", StringComparison.OrdinalIgnoreCase) || 
+                                      Name.Equals("CODE", StringComparison.OrdinalIgnoreCase)) && Entropy > 7.9;
+
+            // 4. Section name contains a dot in the middle, which is non-standard
+            bool hasInvalidNameFormat = Name.Contains(".", StringComparison.Ordinal) && !Name.StartsWith(".", StringComparison.Ordinal);
+
+            return isWritableAndExecutable || isVirtualSizeAnomaly || isHighEntropyCode || hasInvalidNameFormat;
+        }
+    }
 }
 
 public class PeInfo

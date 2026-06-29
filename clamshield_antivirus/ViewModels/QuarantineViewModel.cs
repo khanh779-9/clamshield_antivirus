@@ -8,6 +8,7 @@ using System.Windows.Input;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Models;
 using clamshield_antivirus.Converters;
+using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus.ViewModels;
 
@@ -17,6 +18,8 @@ public class QuarantineViewModel : ViewModelBase
     private string _searchQuery = string.Empty;
     private string _totalSizeText = "0 B";
     private string _itemCountText = "0 items";
+    private bool _hasEntries;
+    private bool _selectAllChecked;
     private List<QuarantineEntry> _allEntries = new();
 
     public ObservableCollection<QuarantineEntry> Entries { get; } = new();
@@ -34,6 +37,25 @@ public class QuarantineViewModel : ViewModelBase
     }
 
     public bool IsEntrySelected => SelectedEntry != null;
+
+    public bool HasEntries
+    {
+        get => _hasEntries;
+        set => SetProperty(ref _hasEntries, value);
+    }
+
+    public bool SelectAllChecked
+    {
+        get => _selectAllChecked;
+        set
+        {
+            if (SetProperty(ref _selectAllChecked, value))
+            {
+                foreach (var entry in Entries)
+                    entry.IsSelected = value;
+            }
+        }
+    }
 
     public string SearchQuery
     {
@@ -63,6 +85,8 @@ public class QuarantineViewModel : ViewModelBase
     public ICommand RestoreCommand { get; }
     public ICommand DeleteCommand { get; }
     public ICommand ClearOldCommand { get; }
+    public ICommand ClearAllCommand { get; }
+    public ICommand DeleteSelectedCommand { get; }
 
     public QuarantineViewModel()
     {
@@ -70,18 +94,30 @@ public class QuarantineViewModel : ViewModelBase
         RestoreCommand = new AsyncRelayCommand(RestoreSelectedAsync);
         DeleteCommand = new AsyncRelayCommand(DeleteSelectedAsync);
         ClearOldCommand = new AsyncRelayCommand(ClearOldEntriesAsync);
+        ClearAllCommand = new AsyncRelayCommand(ClearAllEntriesAsync);
+        DeleteSelectedCommand = new AsyncRelayCommand(DeleteCheckedEntriesAsync);
 
         _ = LoadEntriesAsync();
     }
 
     public async Task LoadEntriesAsync()
     {
-        SelectedEntry = null;
-        var list = await App.Quarantine.GetAllEntriesAsync();
-        _allEntries = list.OrderByDescending(e => e.QuarantineDate).ToList();
-        
-        FilterEntries();
-        CalculateStatistics();
+        try
+        {
+            SelectedEntry = null;
+            var list = await App.Quarantine.GetAllEntriesAsync();
+            _allEntries = list.OrderByDescending(e => e.QuarantineDate).ToList();
+            
+            FilterEntries();
+            CalculateStatistics();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load quarantine entries: {ex.Message}");
+            _allEntries.Clear();
+            Entries.Clear();
+            HasEntries = false;
+        }
     }
 
     private void FilterEntries()
@@ -92,12 +128,13 @@ public class QuarantineViewModel : ViewModelBase
         var filtered = string.IsNullOrEmpty(query)
             ? _allEntries
             : _allEntries.Where(e => e.ThreatName.ToLowerInvariant().Contains(query) || 
-                                     e.OriginalPath.ToLowerInvariant().Contains(query));
+                                      e.OriginalPath.ToLowerInvariant().Contains(query));
 
         foreach (var entry in filtered)
         {
             Entries.Add(entry);
         }
+        HasEntries = Entries.Count > 0;
     }
 
     private void CalculateStatistics()
@@ -121,11 +158,11 @@ public class QuarantineViewModel : ViewModelBase
             FilterEntries();
             CalculateStatistics();
             SelectedEntry = null;
-            MessageBox.Show("File has been successfully restored to its original location.", "Restore Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show("File has been successfully restored to its original location.", "Restore Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
         {
-            MessageBox.Show("Failed to restore file. The original directory might be write-protected or unavailable.", "Restore Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show("Failed to restore file. The original directory might be write-protected or unavailable.", "Restore Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -133,7 +170,7 @@ public class QuarantineViewModel : ViewModelBase
     {
         if (SelectedEntry == null) return;
 
-        var result = MessageBox.Show(
+        var result = ModernMessageBox.Show(
             "Are you sure you want to permanently delete this quarantined file? This action cannot be undone.",
             "Confirm Delete",
             MessageBoxButton.YesNo,
@@ -152,7 +189,7 @@ public class QuarantineViewModel : ViewModelBase
             }
             else
             {
-                MessageBox.Show("Failed to delete the file.", "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show("Failed to delete the file.", "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -164,11 +201,11 @@ public class QuarantineViewModel : ViewModelBase
 
         if (oldEntries.Count == 0)
         {
-            MessageBox.Show("No items are older than 30 days.", "Cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show("No items are older than 30 days.", "Cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var result = MessageBox.Show(
+        var result = ModernMessageBox.Show(
             $"Are you sure you want to permanently delete all {oldEntries.Count} quarantined files older than 30 days?",
             "Confirm Cleanup",
             MessageBoxButton.YesNo,
@@ -189,7 +226,71 @@ public class QuarantineViewModel : ViewModelBase
             FilterEntries();
             CalculateStatistics();
             SelectedEntry = null;
-            MessageBox.Show($"Cleaned up {deletedCount} old entries.", "Cleanup Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show($"Cleaned up {deletedCount} old entries.", "Cleanup Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private async Task ClearAllEntriesAsync()
+    {
+        if (_allEntries.Count == 0) return;
+
+        var result = ModernMessageBox.Show(
+            $"Are you sure you want to permanently delete ALL {_allEntries.Count} quarantined files? This action cannot be undone.",
+            "Confirm Delete All",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            int deletedCount = 0;
+            foreach (var entry in _allEntries.ToList())
+            {
+                if (await App.Quarantine.DeleteFileAsync(entry))
+                {
+                    _allEntries.Remove(entry);
+                    deletedCount++;
+                }
+            }
+
+            FilterEntries();
+            CalculateStatistics();
+            SelectedEntry = null;
+            ModernMessageBox.Show($"Deleted {deletedCount} entries. Quarantine is now empty.", "Clear Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private async Task DeleteCheckedEntriesAsync()
+    {
+        var checkedEntries = Entries.Where(e => e.IsSelected).ToList();
+        if (checkedEntries.Count == 0)
+        {
+            ModernMessageBox.Show("No items selected. Check the box next to items you want to delete.", "Nothing Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var result = ModernMessageBox.Show(
+            $"Delete {checkedEntries.Count} selected quarantined file(s)? This action cannot be undone.",
+            "Confirm Delete Selected",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            int deletedCount = 0;
+            foreach (var entry in checkedEntries)
+            {
+                if (await App.Quarantine.DeleteFileAsync(entry))
+                {
+                    _allEntries.Remove(entry);
+                    deletedCount++;
+                }
+            }
+
+            FilterEntries();
+            CalculateStatistics();
+            SelectedEntry = null;
+            SelectAllChecked = false;
+            ModernMessageBox.Show($"Deleted {deletedCount} selected file(s).", "Delete Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

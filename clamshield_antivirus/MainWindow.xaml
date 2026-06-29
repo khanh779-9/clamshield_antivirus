@@ -7,8 +7,8 @@
         xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
         xmlns:views="clr-namespace:clamshield_antivirus.Views"
         mc:Ignorable="d"
-        Title="ClamUI" Height="680" Width="980"
-        MinWidth="800" MinHeight="550"
+        Title="ClamUI" Height="700" Width="1020"
+        MinWidth="820" MinHeight="580"
         Style="{StaticResource DarkWindowStyle}"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None">
@@ -72,7 +72,7 @@
         <Grid>
             <Grid.ColumnDefinitions>
                 <!-- Sidebar column -->
-                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="200"/>
                 <!-- Separator column -->
                 <ColumnDefinition Width="1"/>
                 <!-- Content column -->
@@ -96,11 +96,11 @@
                 <Border Grid.Row="0" Background="Transparent"/>
 
                 <!-- Brand header -->
-                <StackPanel Grid.Row="1" Margin="24,10,24,18" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🛡️" FontSize="26" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <StackPanel Grid.Row="1" Margin="20,8,20,16" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🛡️" FontSize="24" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <StackPanel>
-                        <TextBlock Text="ClamUI" FontSize="20" FontWeight="Bold" Foreground="White"/>
-                        <TextBlock Text="Windows Protection" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                        <TextBlock Text="ClamUI" FontSize="18" FontWeight="Bold" Foreground="White"/>
+                        <TextBlock Text="Windows Protection" FontSize="10" Foreground="{StaticResource DimTextBrush}"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -113,16 +113,16 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:NavigationItem}">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Icon}" FontSize="16" Width="24" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontWeight="Medium"/>
+                                <TextBlock Text="{Binding Icon}" FontSize="15" Width="22" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontWeight="Medium" FontSize="13"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
 
                 <!-- Sidebar footer / version info -->
-                <StackPanel Grid.Row="3" Margin="20,16" Orientation="Vertical">
-                    <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,12"/>
+                <StackPanel Grid.Row="3" Margin="16,12" Orientation="Vertical">
+                    <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,8"/>
                     <TextBlock Text="ClamUI v1.0.0" FontSize="11" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center"/>
                     <TextBlock Text="Powered by ClamAV" FontSize="10" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                 </StackPanel>
@@ -148,7 +148,7 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Current page title displayed in title bar -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                         <TextBlock Text="{Binding SelectedNavigationItem.Title}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource DimTextBrush}"/>
                     </StackPanel>
 

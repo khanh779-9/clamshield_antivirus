@@ -22,8 +22,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header Title Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -37,22 +36,21 @@
                     VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- Summary Banner -->
-        <Border Grid.Row="1" CornerRadius="12" Padding="16" Margin="0,0,0,20"
+        <Border Grid.Row="1" CornerRadius="10" Padding="16" Margin="0,0,0,16"
                 Background="{Binding HasIssues, Converter={StaticResource IssuesToColorConverter}}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding HasIssues, Converter={StaticResource IssuesToIconConverter}}" FontSize="28" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="0" Text="{Binding HasIssues, Converter={StaticResource IssuesToIconConverter}}" FontSize="24" Margin="0,0,16,0" VerticalAlignment="Center"
+                           Foreground="#2D2D44"/>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SummaryText}" FontSize="15" FontWeight="Bold" Foreground="Black"/>
+                    <TextBlock Text="{Binding SummaryText}" FontSize="15" FontWeight="Bold" Foreground="#2D2D44"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Audit Checks List -->
         <ListBox Grid.Row="2" ItemsSource="{Binding AuditItems}"
                  Background="Transparent" BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -60,7 +58,7 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="BorderThickness" Value="0"/>
-                    <Setter Property="Margin" Value="0,0,0,12"/>
+                    <Setter Property="Margin" Value="0,0,0,10"/>
                     <Setter Property="Focusable" Value="False"/>
                     <Setter Property="Template">
                         <Setter.Value>
@@ -86,34 +84,29 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- Check state icon -->
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Status, Converter={StaticResource StatusToIcon}}" 
                                        Foreground="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}" 
-                                       FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                       FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,14,0"/>
 
-                            <!-- Main details -->
                             <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}" FontSize="14"/>
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource CardTitle}"/>
                                 <TextBlock Text="{Binding Description}" Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <!-- Status Badge -->
-                            <Border Grid.Row="0" Grid.Column="2" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderThickness="1"
+                            <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource BadgeStyle}" Padding="6,3" VerticalAlignment="Center"
                                     Background="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_bg'}"
                                     BorderBrush="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
                                 <TextBlock Text="{Binding Status}" FontSize="10" FontWeight="Bold" 
                                            Foreground="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}"/>
                             </Border>
 
-                            <!-- Suggestion details (Appears if warning/fail) -->
-                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0"
                                         Visibility="{Binding Status, Converter={StaticResource AuditWarningToVisConverter}}">
-                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,8"/>
-                                <TextBlock Text="{Binding Suggestion}" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" TextWrapping="Wrap"/>
+                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,6"/>
+                                <TextBlock Text="{Binding Suggestion}" Style="{StaticResource CardSubtitle}" FontSize="12" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <!-- Fix Command Terminal Box -->
-                            <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                            <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0"
                                   Visibility="{Binding FixCommand, Converter={StaticResource StringToVis}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -123,7 +116,7 @@
                                          FontFamily="{StaticResource MonoFont}" FontSize="11"
                                          Background="{StaticResource SidebarBgBrush}" Foreground="{StaticResource PrimaryTextBrush}"
                                          Padding="10,6" IsReadOnly="True" BorderThickness="1,1,0,1"/>
-                                <Button Grid.Column="1" Content="📋 Copy Command" Style="{StaticResource SecondaryButton}" 
+                                <Button Grid.Column="1" Content="Copy" Style="{StaticResource SecondaryButton}" 
                                         Padding="12,6" BorderThickness="0,1,1,1"
                                         Click="CopyCommand_Click" CommandParameter="{Binding FixCommand}"/>
                             </Grid>

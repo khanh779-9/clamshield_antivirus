@@ -10,6 +10,7 @@ using System.Windows.Input;
 using Microsoft.Win32;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Models;
+using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus.ViewModels;
 
@@ -272,7 +273,7 @@ public class ScanViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to generate EICAR test file: {ex.Message}", "EICAR Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show($"Failed to generate EICAR test file: {ex.Message}", "EICAR Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -331,7 +332,7 @@ public class ScanViewModel : ViewModelBase
         {
             exclusions.Add(path);
             App.Settings.Set("ExclusionPatterns", exclusions);
-            MessageBox.Show($"Added to exclusions:\n{path}", "Path Excluded", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show($"Added to exclusions:\n{path}", "Path Excluded", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

@@ -15,8 +15,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header Title Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,24">
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -30,7 +29,6 @@
                     VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- Main Components List -->
         <ListBox Grid.Row="1" ItemsSource="{Binding Components}"
                  Background="Transparent" BorderThickness="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -38,7 +36,7 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="BorderThickness" Value="0"/>
-                    <Setter Property="Margin" Value="0,0,0,12"/>
+                    <Setter Property="Margin" Value="0,0,0,10"/>
                     <Setter Property="Focusable" Value="False"/>
                     <Setter Property="Template">
                         <Setter.Value>
@@ -58,7 +56,6 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Primary details -->
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
@@ -67,22 +64,19 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Icon representation -->
-                                <Border Grid.Column="0" Width="40" Height="40" CornerRadius="20" Background="{StaticResource SurfaceBrush}" Margin="0,0,16,0">
-                                    <TextBlock Text="⚙️" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Border Grid.Column="0" Width="36" Height="36" CornerRadius="18" Background="{StaticResource SurfaceBrush}" Margin="0,0,12,0">
+                                    <TextBlock Text="⚙️" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
 
-                                <!-- Title and Executable Details -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" Style="{StaticResource CardTitle}" FontSize="15"/>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource CardTitle}"/>
                                     <TextBlock Text="{Binding Description}" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0"/>
                                     <TextBlock Text="{Binding ExecutablePath, StringFormat='Path: {0}'}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,4,0,0"
                                                Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVis}}"/>
                                 </StackPanel>
 
-                                <!-- Version / Installed indicator -->
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="16,0" HorizontalAlignment="Right">
-                                    <Border CornerRadius="4" Padding="8,4" BorderThickness="1"
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="12,0" HorizontalAlignment="Right">
+                                    <Border Style="{StaticResource BadgeStyle}" Padding="8,3"
                                             Background="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_bg'}"
                                             BorderBrush="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
                                         <TextBlock Text="{Binding Status}" FontWeight="SemiBold" FontSize="11" 
@@ -91,14 +85,12 @@
                                     <TextBlock Text="{Binding Version}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,4,0,0" HorizontalAlignment="Right" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
 
-                                <!-- Status Badge Character -->
                                 <TextBlock Grid.Column="3" Text="{Binding Status, Converter={StaticResource StatusToIcon}}" 
                                            Foreground="{Binding Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}" 
-                                           FontSize="22" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                           FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
                             </Grid>
 
-                            <!-- Setup instructions if missing -->
-                            <Border Grid.Row="1" Margin="0,12,0,0" Padding="12" CornerRadius="8" Background="{StaticResource SidebarBgBrush}"
+                            <Border Grid.Row="1" Margin="0,10,0,0" Padding="12" CornerRadius="8" Background="{StaticResource SidebarBgBrush}"
                                     Visibility="{Binding IsInstalled, Converter={StaticResource InvBoolToVis}}">
                                 <StackPanel>
                                     <TextBlock Text="🔧 Signature Database Update Guide" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}"/>

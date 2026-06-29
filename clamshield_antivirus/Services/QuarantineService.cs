@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Collections.Generic;
@@ -15,6 +16,12 @@ public class QuarantineService
         "quarantine"
     );
     private static readonly string KeyFile = Path.Combine(QuarantineDir, ".key");
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true
+    };
 
     private byte[] _key;
     private byte[] _iv;
@@ -96,10 +103,6 @@ public class QuarantineService
                 string destMetadataPath = Path.Combine(QuarantineDir, $"{entryId}.json");
 
                 byte[] plaintext = File.ReadAllBytes(filePath);
-                byte[] ciphertext = Encrypt(plaintext);
-                File.WriteAllBytes(destFilePath, ciphertext);
-
-                File.Delete(filePath);
 
                 var entry = new QuarantineEntry
                 {
@@ -111,8 +114,14 @@ public class QuarantineService
                     QuarantineDate = DateTime.Now
                 };
 
-                string json = JsonSerializer.Serialize(entry, new JsonSerializerOptions { WriteIndented = true });
+                // Write JSON metadata FIRST, then encrypted data, then delete original
+                string json = JsonSerializer.Serialize(entry, JsonOptions);
                 File.WriteAllText(destMetadataPath, json);
+
+                byte[] ciphertext = Encrypt(plaintext);
+                File.WriteAllBytes(destFilePath, ciphertext);
+
+                File.Delete(filePath);
 
                 return entry;
             }
@@ -189,17 +198,48 @@ public class QuarantineService
             {
                 EnsureDirectoryExists();
 
+                // 1. Load entries from JSON metadata files
                 var jsonFiles = Directory.GetFiles(QuarantineDir, "*.json");
+                var loadedIds = new HashSet<string>();
+
                 foreach (var jsonFile in jsonFiles)
                 {
                     try
                     {
                         string json = File.ReadAllText(jsonFile);
-                        var entry = JsonSerializer.Deserialize<QuarantineEntry>(json);
-                        if (entry != null)
+                        var entry = JsonSerializer.Deserialize<QuarantineEntry>(json, JsonOptions);
+                        if (entry != null && !string.IsNullOrEmpty(entry.Id))
+                        {
+                            entry.QuarantinePath = Path.Combine(QuarantineDir, $"{entry.Id}.dat");
                             entries.Add(entry);
+                            loadedIds.Add(entry.Id);
+                        }
                     }
                     catch { }
+                }
+
+                // 2. Orphaned .dat files (no JSON metadata) — reconstruct basic entries
+                var datFiles = Directory.GetFiles(QuarantineDir, "*.dat");
+                foreach (var datFile in datFiles)
+                {
+                    var id = Path.GetFileNameWithoutExtension(datFile);
+                    if (!loadedIds.Contains(id))
+                    {
+                        try
+                        {
+                            var fileInfo = new FileInfo(datFile);
+                            entries.Add(new QuarantineEntry
+                            {
+                                Id = id,
+                                ThreatName = "Unknown Threat",
+                                OriginalPath = $"Restore failed — file ID: {id}",
+                                QuarantinePath = datFile,
+                                FileSize = fileInfo.Length,
+                                QuarantineDate = fileInfo.LastWriteTime
+                            });
+                        }
+                        catch { }
+                    }
                 }
             }
             catch (Exception ex)

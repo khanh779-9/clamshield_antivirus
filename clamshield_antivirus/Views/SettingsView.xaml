@@ -14,7 +14,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,24">
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <TextBlock Text="Settings" Style="{StaticResource HeadingText}"/>
             <TextBlock Text="Configure ClamUI behavior and integrations" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
         </StackPanel>
@@ -22,22 +22,21 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
-                <!-- Explorer Integration -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Explorer Integration" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,12"/>
+                        <TextBlock Text="Explorer Integration" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="Add or remove the 'Scan with ClamUI' option from the Windows Explorer right-click context menu for files, folders, and drives." 
-                                   TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
-                        <Border Padding="16" CornerRadius="8" Background="{StaticResource SidebarBgBrush}">
+                        <Border Style="{StaticResource InlineSettingRow}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Context Menu" FontWeight="SemiBold" FontSize="14" Foreground="White"/>
-                                    <TextBlock Text="Right-click files/folders and scan instantly" FontSize="12" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="Context Menu" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="Right-click files/folders and scan instantly" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1" IsChecked="{Binding ContextMenuEnabled}" 
                                               Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
@@ -46,22 +45,21 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Auto-Start with Windows -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Startup" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,12"/>
+                        <TextBlock Text="Startup" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="Automatically launch ClamUI when you sign in to Windows." 
-                                   TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
-                        <Border Padding="16" CornerRadius="8" Background="{StaticResource SidebarBgBrush}">
+                        <Border Style="{StaticResource InlineSettingRow}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Launch at Startup" FontWeight="SemiBold" FontSize="14" Foreground="White"/>
-                                    <TextBlock Text="Start ClamUI automatically when you log in" FontSize="12" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="Launch at Startup" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="Start ClamUI automatically when you log in" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1" IsChecked="{Binding StartupEnabled}" 
                                               Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
@@ -70,39 +68,38 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Scheduled Scanning -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Scheduled Scanning" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,12"/>
+                        <TextBlock Text="Scheduled Scanning" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="Schedule automatic scans via Windows Task Scheduler. The app will scan all drives at the configured time." 
-                                   TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
-                        <Border Padding="16" CornerRadius="8" Background="{StaticResource SidebarBgBrush}">
+                        <Border Style="{StaticResource InlineSettingRow}">
                             <StackPanel>
-                                <Grid Margin="0,0,0,12">
+                                <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Enable Scheduled Scan" FontWeight="SemiBold" FontSize="14" Foreground="White"/>
-                                        <TextBlock Text="Run scans automatically on a schedule" FontSize="12" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Enable Scheduled Scan" FontWeight="SemiBold" FontSize="13"/>
+                                        <TextBlock Text="Run scans automatically on a schedule" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ToggleButton Grid.Column="1" IsChecked="{Binding ScheduleEnabled}" 
                                                   Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <Grid Margin="0,0,0,8" IsEnabled="{Binding ScheduleEnabled}">
+                                <Grid Margin="0,0,0,6" IsEnabled="{Binding ScheduleEnabled}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Time:" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" 
-                                               VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding ScheduleTime}" Width="100" HorizontalAlignment="Left" FontSize="13"/>
+                                    <TextBlock Grid.Column="0" Text="Time:" FontSize="13" Style="{StaticResource CardSubtitle}" 
+                                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding ScheduleTime}" Width="100" HorizontalAlignment="Left"/>
                                 </Grid>
 
-                                <Grid Margin="0,0,0,8" IsEnabled="{Binding ScheduleEnabled}">
+                                <Grid IsEnabled="{Binding ScheduleEnabled}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="Auto"/>
@@ -110,7 +107,7 @@
                                     </Grid.ColumnDefinitions>
                                     <CheckBox Grid.Column="0" IsChecked="{Binding ScheduleWeekly}" 
                                               Content="Weekly" Foreground="{StaticResource SecondaryTextBrush}"
-                                              VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                              VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <ComboBox Grid.Column="1" SelectedIndex="{Binding ScheduleDay}" Width="120" 
                                               Visibility="{Binding ScheduleWeekly, Converter={StaticResource BoolToVis}}">
                                         <ComboBoxItem Content="Sunday"/>
@@ -127,62 +124,58 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Scan Options -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Scan Options" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,12"/>
+                        <TextBlock Text="Scan Options" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="Configure limits and file types for scanning." 
-                                   TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
-                        <Border Padding="16" CornerRadius="8" Background="{StaticResource SidebarBgBrush}">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Maximum File Size Limit" FontWeight="SemiBold" FontSize="14" Foreground="White"/>
-                                        <TextBlock Text="Skip scanning files exceeding this size limit" FontSize="12" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBox Text="{Binding MaxFileSizeMB, UpdateSourceTrigger=PropertyChanged}" Width="80" TextAlignment="Right" FontSize="13"/>
-                                        <TextBlock Text=" MB" Foreground="{StaticResource SecondaryTextBrush}" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                    </StackPanel>
-                                </Grid>
-                            </StackPanel>
+                        <Border Style="{StaticResource InlineSettingRow}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Maximum File Size Limit" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="Skip scanning files exceeding this size limit" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBox Text="{Binding MaxFileSizeMB, UpdateSourceTrigger=PropertyChanged}" Width="80" TextAlignment="Right"/>
+                                    <TextBlock Text=" MB" Style="{StaticResource CardSubtitle}" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                </StackPanel>
+                            </Grid>
                         </Border>
                     </StackPanel>
                 </Border>
 
-                <!-- Real-time Monitoring -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                <Border Style="{StaticResource SectionCard}" Margin="0,0,0,0">
                     <StackPanel>
-                        <TextBlock Text="Real-time Protection" FontSize="16" FontWeight="SemiBold" Foreground="White" Margin="0,0,0,12"/>
+                        <TextBlock Text="Real-time Protection" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="Monitor folders for new or modified files and scan them automatically for threats." 
-                                   TextWrapping="Wrap" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
-                        <Border Padding="16" CornerRadius="8" Background="{StaticResource SidebarBgBrush}">
+                        <Border Style="{StaticResource InlineSettingRow}">
                             <StackPanel>
-                                <Grid Margin="0,0,0,12">
+                                <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Enable Real-time Monitoring" FontWeight="SemiBold" FontSize="14" Foreground="White"/>
-                                        <TextBlock Text="Automatically scan new and modified files" FontSize="12" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Enable Real-time Monitoring" FontWeight="SemiBold" FontSize="13"/>
+                                        <TextBlock Text="Automatically scan new and modified files" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ToggleButton Grid.Column="1" IsChecked="{Binding RealtimeEnabled}" 
                                                   Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <TextBlock Text="Files scanned: {Binding RealtimeScanned}" FontSize="12" Foreground="{StaticResource DimTextBrush}" 
+                                <TextBlock Text="{Binding RealtimeScanned, StringFormat='Files scanned: {0}'}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,0,0,8"
                                            Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}"/>
 
-                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,12"/>
+                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,10"/>
 
-                                <TextBlock Text="Watched Folders" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,8"/>
+                                <TextBlock Text="Watched Folders" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding WatchFolders}" Margin="0,0,0,8">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -191,11 +184,9 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" 
+                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="12" Style="{StaticResource CardSubtitle}" 
                                                            VerticalAlignment="Center"/>
-                                                <Button Grid.Column="1" Content="✕" FontSize="10" Width="20" Height="20"
-                                                        Background="Transparent" BorderThickness="0"
-                                                        Foreground="{StaticResource DimTextBrush}"
+                                                <Button Grid.Column="1" Content="✕" Style="{StaticResource SmallIconButton}"
                                                         Command="{Binding DataContext.RemoveWatchFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"/>
                                             </Grid>
@@ -203,24 +194,24 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
-                                <Grid>
+                                <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" Text="{Binding NewWatchPath, UpdateSourceTrigger=PropertyChanged}" 
-                                             FontSize="12" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Content="Browse" 
-                                            Command="{Binding BrowseWatchFolderCommand}" Margin="0,0,8,0"
+                                    <TextBox Grid.Column="0" Text="{Binding NewWatchPath, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Grid.Column="1" Content="Browse" Margin="6,0,6,0"
+                                            Command="{Binding BrowseWatchFolderCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
                                     <Button Grid.Column="2" Content="Add" 
                                             Command="{Binding AddWatchFolderCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
                                 </Grid>
 
-                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,12"/>
+                                <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,10"/>
 
-                                <TextBlock Text="Exclusion Patterns" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,8"/>
+                                <TextBlock Text="Exclusion Patterns" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding ExclusionPatterns}" Margin="0,0,0,8">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -229,11 +220,9 @@
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" 
+                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="12" Style="{StaticResource CardSubtitle}" 
                                                            VerticalAlignment="Center"/>
-                                                <Button Grid.Column="1" Content="✕" FontSize="10" Width="20" Height="20"
-                                                        Background="Transparent" BorderThickness="0"
-                                                        Foreground="{StaticResource DimTextBrush}"
+                                                <Button Grid.Column="1" Content="✕" Style="{StaticResource SmallIconButton}"
                                                         Command="{Binding DataContext.RemoveExclusionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}"/>
                                             </Grid>
@@ -246,9 +235,8 @@
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" Text="{Binding NewExclusion, UpdateSourceTrigger=PropertyChanged}" 
-                                             FontSize="12" Margin="0,0,8,0"/>
-                                    <Button Grid.Column="1" Content="Add" 
+                                    <TextBox Grid.Column="0" Text="{Binding NewExclusion, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <Button Grid.Column="1" Content="Add" Margin="6,0,0,0"
                                             Command="{Binding AddExclusionCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
                                 </Grid>

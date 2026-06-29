@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
 using clamshield_antivirus.ViewModels;
+using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus.Services;
 
@@ -105,7 +106,16 @@ public class SystemTrayService : IDisposable
 
     private static void ExitApp()
     {
-        System.Windows.Application.Current.Shutdown();
+        var result = ModernMessageBox.Show(
+            "Are you sure you want to exit ClamUI? Real-time antivirus protection will be disabled.",
+            "Confirm Exit",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            System.Windows.Application.Current.Shutdown();
+        }
     }
 
     public void SetStatus(string status)

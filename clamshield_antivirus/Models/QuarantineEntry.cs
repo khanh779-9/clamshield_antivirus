@@ -10,4 +10,6 @@ public class QuarantineEntry
     public string QuarantinePath { get; set; } = string.Empty;
     public long FileSize { get; set; }
     public DateTime QuarantineDate { get; set; } = DateTime.Now;
+    public string FileName => string.IsNullOrEmpty(OriginalPath) ? "Unknown" : System.IO.Path.GetFileName(OriginalPath);
+    public bool IsSelected { get; set; }
 }

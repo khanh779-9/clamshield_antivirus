@@ -16,8 +16,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <StackPanel>
                 <TextBlock Text="Database Update" Style="{StaticResource HeadingText}"/>
                 <TextBlock Text="Update ClamAV virus definitions to detect the latest threats" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
@@ -25,52 +24,49 @@
         </Grid>
 
         <!-- Status Cards -->
-        <Grid Grid.Row="1" Margin="0,0,0,20">
+        <Grid Grid.Row="1" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Card 1: freshclam availability -->
-            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,8,0">
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,6,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="📦" FontSize="32" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <TextBlock Grid.Column="0" Text="📦" Style="{StaticResource CardIcon}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="Updater Status" Style="{StaticResource CardSubtitle}"/>
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource CardTitle}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
-                        <TextBlock Text="C# Update Engine Active" Foreground="{StaticResource SuccessBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        <TextBlock Text="C# Update Engine Active" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- Card 2: Last updated time -->
-            <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="8,0,0,0">
+            <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="6,0,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="⏰" FontSize="32" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <TextBlock Grid.Column="0" Text="⏰" Style="{StaticResource CardIcon}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="Last Database Update" Style="{StaticResource CardSubtitle}"/>
-                        <TextBlock Text="{Binding LastUpdateTime}" Style="{StaticResource CardTitle}" FontSize="16" Margin="0,4,0,0"/>
-                        <TextBlock Text="Definitions are active" Foreground="{StaticResource SuccessBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding LastUpdateTime}" Style="{StaticResource CardTitle}" Margin="0,4,0,0"/>
+                        <TextBlock Text="Definitions are active" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- Terminal Output Log -->
-        <Grid Grid.Row="2" Margin="0,0,0,20">
+        <Grid Grid.Row="2" Margin="0,0,0,16">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Console Log Output" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+            <TextBlock Grid.Row="0" Text="Console Log Output" Style="{StaticResource SectionTitle}"/>
             <TextBox Grid.Row="1" 
                      Text="{Binding ProgressLog, Mode=OneWay}" 
                      FontFamily="{StaticResource MonoFont}"
@@ -85,17 +81,14 @@
                      TextChanged="TextBox_TextChanged"/>
         </Grid>
 
-        <!-- Actions panel -->
         <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Live loading animation status -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
                         Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}">
-                <!-- Perfectly Centered Vector Spinner -->
                 <Grid Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,10,0" RenderTransformOrigin="0.5,0.5">
                     <Grid.RenderTransform>
                         <RotateTransform Angle="0"/>
@@ -110,17 +103,14 @@
                             </BeginStoryboard>
                         </EventTrigger>
                     </Grid.Triggers>
-                    <!-- Faint background track for progress-ring style -->
                     <Ellipse Stroke="{StaticResource BorderBrush}" StrokeThickness="2" Opacity="0.5"/>
-                    <!-- Active spinning segment -->
                     <Ellipse Stroke="{StaticResource AccentBrush}" StrokeThickness="2" StrokeDashArray="3 1.5"/>
                 </Grid>
-                <TextBlock Text="Downloading &amp; parsing database definitions. Please wait..." Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center"/>
+                <TextBlock Text="Downloading &amp; parsing database definitions. Please wait..." Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
             </StackPanel>
 
-            <!-- Buttons -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancel Update" Style="{StaticResource DangerButton}" Command="{Binding CancelUpdateCommand}" Margin="0,0,10,0"
+                <Button Content="Cancel Update" Style="{StaticResource DangerButton}" Command="{Binding CancelUpdateCommand}" Margin="0,0,8,0"
                         Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}"/>
                 <Button Content="Update Definitions" Style="{StaticResource AccentButton}" Command="{Binding UpdateCommand}" 
                         IsEnabled="{Binding CanUpdate}"

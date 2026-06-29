@@ -20,7 +20,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header Title Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,20">
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -29,7 +29,7 @@
                 <TextBlock Text="Scan Targets" Style="{StaticResource HeadingText}"/>
                 <TextBlock Text="Select files or directories to scan for viruses" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
-            <TextBlock Grid.Column="1" Text="{Binding BackendText}" Foreground="{StaticResource DimTextBrush}" FontSize="12" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding BackendText}" Style="{StaticResource StatusText}" Foreground="{StaticResource DimTextBrush}" VerticalAlignment="Center"/>
         </Grid>
 
         <!-- Core Working Area -->
@@ -40,7 +40,7 @@
             </Grid.RowDefinitions>
 
             <!-- Configuration Frame (Profile Selector) -->
-            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="0,0,0,16" Padding="12">
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="0,0,0,12" Padding="12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -48,10 +48,10 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="📋" FontSize="18" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="Scan Profile:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="📋" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Scan Profile:" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <ComboBox Grid.Column="1" Margin="16,0,0,0" 
+                    <ComboBox Grid.Column="1" Margin="12,0,0,0" 
                               ItemsSource="{Binding Profiles}"
                               SelectedItem="{Binding SelectedProfile}"
                               DisplayMemberPath="Name"
@@ -64,9 +64,9 @@
                 <!-- Empty Target Placeholder (Dropzone visual) -->
                 <Border Style="{StaticResource CardStyle}" BorderBrush="{StaticResource BorderBrush}" Background="{StaticResource SidebarBgBrush}"
                         Visibility="{Binding Targets.Count, Converter={StaticResource InvBoolToVis}, FallbackValue=Visible}">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
-                        <TextBlock Text="📁" FontSize="48" HorizontalAlignment="Center" Opacity="0.4"/>
-                        <TextBlock Text="No targets added" FontWeight="SemiBold" FontSize="15" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24">
+                        <TextBlock Text="📁" FontSize="40" HorizontalAlignment="Center" Opacity="0.35"/>
+                        <TextBlock Text="No targets added" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
                         <TextBlock Text="Drag and drop files here, or use the buttons below" Foreground="{StaticResource SecondaryTextBrush}" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
@@ -78,18 +78,17 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type sys:String}">
-                            <Border Style="{StaticResource CardStyle}" Padding="10,8" Margin="0,0,0,6" Background="{StaticResource SurfaceBrush}">
+                            <Border Style="{StaticResource CardStyle}" Padding="10,6" Margin="0,0,0,6" Background="{StaticResource SurfaceBrush}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="📄" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{StaticResource PrimaryTextBrush}"/>
+                                    <TextBlock Grid.Column="0" Text="📄" Margin="0,0,8,0" VerticalAlignment="Center" FontSize="14"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="13"/>
                                     <Button Grid.Column="2" Content="✕" 
-                                            Style="{StaticResource IconButton}" 
-                                            Width="24" Height="24" FontSize="10"
+                                            Style="{StaticResource SmallIconButton}" 
                                             Command="{Binding DataContext.RemoveTargetCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" 
                                             CommandParameter="{Binding}"
                                             IsEnabled="{Binding DataContext.IsScanning, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource InvBool}}"/>
@@ -116,20 +115,20 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Content="＋ Add Files" Style="{StaticResource SecondaryButton}" Command="{Binding AddFileCommand}" Margin="0,0,8,0"/>
-                    <Button Content="＋ Add Folder" Style="{StaticResource SecondaryButton}" Command="{Binding AddFolderCommand}" Margin="0,0,8,0"/>
-                    <Button Content="🗑️ Clear All" Style="{StaticResource DangerButton}" Command="{Binding ClearTargetsCommand}" 
+                    <Button Content="＋ Add Files" Style="{StaticResource SecondaryButton}" Command="{Binding AddFileCommand}" Margin="0,0,6,0"/>
+                    <Button Content="＋ Add Folder" Style="{StaticResource SecondaryButton}" Command="{Binding AddFolderCommand}" Margin="0,0,6,0"/>
+                    <Button Content="🗑 Clear All" Style="{StaticResource DangerButton}" Command="{Binding ClearTargetsCommand}" 
                             Visibility="{Binding Targets.Count, Converter={StaticResource CountToVis}}"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button Content="🧪 EICAR Test" Style="{StaticResource SecondaryButton}" Command="{Binding EicarTestCommand}" Margin="0,0,8,0"/>
+                    <Button Content="🧪 EICAR Test" Style="{StaticResource SecondaryButton}" Command="{Binding EicarTestCommand}" Margin="0,0,6,0"/>
                     <Button Content="🚀 Start Scan" Style="{StaticResource AccentButton}" Command="{Binding StartScanCommand}" IsEnabled="{Binding CanStartScan}"/>
                 </StackPanel>
             </Grid>
 
             <!-- Scanning progress state -->
-            <Border Grid.Row="0" Style="{StaticResource CardStyle}" BorderBrush="{StaticResource AccentBrush}" Padding="16"
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" BorderBrush="{StaticResource AccentBrush}" Padding="14"
                     Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -141,21 +140,18 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Progress.StatusText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Progress.FilesScanned, StringFormat='Files scanned: {0}'}" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center"/>
-
-                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource AccentProgressBar}" Margin="0,12" 
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Progress.StatusText}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Progress.FilesScanned, StringFormat='Scanned: {0}'}" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
+                    <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource AccentProgressBar}" Margin="0,10" 
                                  IsIndeterminate="{Binding Progress.IsIndeterminate}"
                                  Value="{Binding Progress.ProgressPercentage}"/>
-
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Progress.CurrentFile}" FontSize="12" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                    <Button Grid.Row="2" Grid.Column="1" Content="Stop Scan" Style="{StaticResource DangerButton}" Padding="12,6" Command="{Binding CancelScanCommand}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Progress.CurrentFile}" FontSize="11" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <Button Grid.Row="2" Grid.Column="1" Content="Cancel" Style="{StaticResource DangerButton}" Padding="12,6" Command="{Binding CancelScanCommand}" VerticalAlignment="Center"/>
                 </Grid>
             </Border>
 
             <!-- Results display (Appears under control buttons) -->
-            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="16"
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="16"
                     Visibility="{Binding IsResultAvailable, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -164,8 +160,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Scan Results Banner -->
-                    <Border Grid.Row="0" CornerRadius="8" Padding="12" Margin="0,0,0,16" BorderThickness="1"
+                    <Border Grid.Row="0" CornerRadius="8" Padding="12" Margin="0,0,0,12" BorderThickness="1"
                             Background="{Binding Result.Status, Converter={StaticResource StatusToColor}, ConverterParameter='card_bg'}"
                             BorderBrush="{Binding Result.Status, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
                         <Grid>
@@ -176,17 +171,17 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding Result.Status, Converter={StaticResource StatusToIcon}}" 
                                        Foreground="{Binding Result.Status, Converter={StaticResource StatusToColor}, ConverterParameter='badge_fg'}"
-                                       FontSize="20" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                       FontSize="18" FontWeight="Bold" Margin="0,0,10,0" VerticalAlignment="Center"/>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Result.Status, StringFormat='Scan Status: {0}'}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}"/>
-                                <TextBlock Text="{Binding Result.ScanPath, StringFormat='Targets: {0}'}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Result.Status, StringFormat='Scan Status: {0}'}" FontSize="14" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding Result.ScanPath, StringFormat='Targets: {0}'}" FontSize="11" Style="{StaticResource CardSubtitle}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="2" Text="{Binding Result.Duration, StringFormat='Time: {0:mm\\:ss}'}" Foreground="{StaticResource PrimaryTextBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Result.Duration, StringFormat='Time: {0:mm\\:ss}'}" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="13"/>
                         </Grid>
                     </Border>
 
                     <!-- Stats summaries -->
-                    <Grid Grid.Row="1" Margin="0,0,0,12">
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
@@ -194,55 +189,55 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                             <TextBlock Text="Files Scanned" Style="{StaticResource CardSubtitle}"/>
-                            <TextBlock Text="{Binding Result.FilesScanned}" Style="{StaticResource CardTitle}" FontSize="18" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding Result.FilesScanned}" Style="{StaticResource StatNumber}" HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="22"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
                             <TextBlock Text="Directories" Style="{StaticResource CardSubtitle}"/>
-                            <TextBlock Text="{Binding Result.DirectoriesScanned}" Style="{StaticResource CardTitle}" FontSize="18" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            <TextBlock Text="{Binding Result.DirectoriesScanned}" Style="{StaticResource StatNumber}" HorizontalAlignment="Center" Margin="0,4,0,0" FontSize="22"/>
                         </StackPanel>
                         <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                             <TextBlock Text="Threats Found" Style="{StaticResource CardSubtitle}"/>
-                            <TextBlock Text="{Binding Result.ThreatsFound}" Style="{StaticResource CardTitle}" FontSize="18" HorizontalAlignment="Center" Margin="0,4,0,0"
+                            <TextBlock Text="{Binding Result.ThreatsFound}" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"
                                        Foreground="{Binding Result.ThreatsFound, Converter={StaticResource StatusToColor}, ConverterParameter='infected'}"/>
                         </StackPanel>
                     </Grid>
 
                     <!-- Threats list / Actions -->
                     <StackPanel Grid.Row="2" Visibility="{Binding Result.ThreatsFound, Converter={StaticResource CountToVis}}">
-                        <Separator Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,10">
+                        <Separator Margin="0,0,0,10"/>
+                        <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Detected Threats" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Content="🛡️ Quarantine All" Style="{StaticResource AccentButton}" Padding="16,8" Command="{Binding QuarantineAllCommand}" VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="Quarantine All" Style="{StaticResource AccentButton}" Padding="14,7" Command="{Binding QuarantineAllCommand}" VerticalAlignment="Center"/>
                         </Grid>
 
                         <ListBox ItemsSource="{Binding Result.Threats}" MaxHeight="150" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type models:ThreatDetail}">
-                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="{Binding ThreatName}" FontWeight="Bold" Foreground="{StaticResource ErrorBrush}"/>
-                                                <TextBlock Text="{Binding FilePath}" FontSize="11" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis"/>
-                                            </StackPanel>
-                                            <Border Grid.Column="1" CornerRadius="4" Padding="6,2" Background="{StaticResource SurfaceBrush}" VerticalAlignment="Center" Margin="0,0,10,0">
-                                                <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
-                                            </Border>
-                                            <Menu Grid.Column="2" Background="Transparent" VerticalAlignment="Center">
-                                                <MenuItem Header="⋮" Foreground="{StaticResource PrimaryTextBrush}" FontSize="16" Width="24" Height="24">
-                                                    <MenuItem Header="Add to Exclusions" Command="{Binding DataContext.ExcludePathCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
-                                                </MenuItem>
-                                            </Menu>
-                                        </Grid>
+                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding ThreatName}" FontWeight="Bold" Foreground="{StaticResource ErrorBrush}" FontSize="13"/>
+                                        <TextBlock Text="{Binding FilePath}" FontSize="11" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <Border Grid.Column="1" CornerRadius="4" Padding="6,2" Background="{StaticResource SurfaceBrush}" BorderThickness="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding Status}" FontSize="11" Style="{StaticResource StatusText}"/>
                                     </Border>
+                                    <Menu Grid.Column="2" Background="Transparent" VerticalAlignment="Center">
+                                        <MenuItem Header="⋮" Foreground="{StaticResource PrimaryTextBrush}" FontSize="18" Width="28" Height="28">
+                                            <MenuItem Header="Add to Exclusions" Command="{Binding DataContext.ExcludePathCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
+                                        </MenuItem>
+                                    </Menu>
+                                </Grid>
+                            </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
