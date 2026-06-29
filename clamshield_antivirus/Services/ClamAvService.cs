@@ -86,7 +86,9 @@ public class ClamAvService
 
         try
         {
-            await Task.Run(() => EnsureSignaturesLoaded(), cancellationToken);
+            await Task.Run(() => EnsureSignaturesLoaded(cancellationToken), cancellationToken);
+            
+            cancellationToken.ThrowIfCancellationRequested();
 
             rawLogBuilder.AppendLine($"Signatures loaded: {App.Engine.TotalSignatures}");
             rawLogBuilder.AppendLine();
@@ -97,8 +99,7 @@ public class ClamAvService
                 var fileList = new List<string>();
                 foreach (var target in targets)
                 {
-                    if (cancellationToken.IsCancellationRequested)
-                        return;
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     if (File.Exists(target))
                     {
@@ -208,12 +209,9 @@ public class ClamAvService
             result.FilesScanned = filesScanned;
             result.ThreatsFound = threatsFound;
 
-            if (cancellationToken.IsCancellationRequested)
-            {
-                result.Status = "Cancelled";
-                rawLogBuilder.AppendLine("\n[Scan cancelled by user]");
-            }
-            else if (threatsFound > 0)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (threatsFound > 0)
             {
                 result.Status = "Infected";
             }
@@ -221,6 +219,22 @@ public class ClamAvService
             {
                 result.Status = "Clean";
             }
+        }
+        catch (OperationCanceledException)
+        {
+            result.Status = "Cancelled";
+            stopwatch.Stop();
+            result.Duration = stopwatch.Elapsed;
+            result.TotalBytesScanned = totalBytesScanned;
+            result.TotalSignaturesLoaded = App.Engine.TotalSignatures;
+            result.DirectoriesScanned = dirsScanned;
+            result.FilesScanned = filesScanned;
+            result.ThreatsFound = threatsFound;
+            
+            rawLogBuilder.AppendLine();
+            rawLogBuilder.AppendLine("\n[Scan cancelled by user]");
+            result.RawLog = rawLogBuilder.ToString();
+            return result;
         }
         catch (Exception ex)
         {
@@ -313,17 +327,17 @@ public class ClamAvService
     {
         _signaturesDirty = true;
         _signaturesLoaded = false;
-        LoadLocalSignatureDatabases();
+        LoadLocalSignatureDatabases(CancellationToken.None);
     }
 
     public async Task ReloadSignaturesAsync()
     {
         _signaturesDirty = true;
         _signaturesLoaded = false;
-        await Task.Run(() => LoadLocalSignatureDatabases());
+        await Task.Run(() => LoadLocalSignatureDatabases(CancellationToken.None));
     }
 
-    private void EnsureSignaturesLoaded()
+    private void EnsureSignaturesLoaded(CancellationToken cancellationToken)
     {
         if (_signaturesLoaded && !_signaturesDirty)
         {
@@ -332,12 +346,12 @@ public class ClamAvService
             if (currentTimestamp == _dbDirTimestamp)
                 return;
         }
-        LoadLocalSignatureDatabases();
+        LoadLocalSignatureDatabases(cancellationToken);
     }
 
     private readonly object _dbLock = new();
 
-    private void LoadLocalSignatureDatabases()
+    private void LoadLocalSignatureDatabases(CancellationToken cancellationToken)
     {
         lock (_dbLock)
         {
@@ -361,6 +375,7 @@ public class ClamAvService
                 var cvdFiles = Directory.GetFiles(DbDir, "*.c*d");
                 foreach (var cvdFile in cvdFiles)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
                         var cvdInfo = CvdReader.ReadCvdHeader(cvdFile);
@@ -372,6 +387,7 @@ public class ClamAvService
                         var files = CvdReader.ExtractCvd(cvdFile);
                         foreach (var file in files)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             string content = System.Text.Encoding.ASCII.GetString(file.Content);
                             int loaded = App.Engine.LoadSignaturesFromContent(file.FileName, content);
                             Debug.WriteLine($"CVD {Path.GetFileName(cvdFile)} -> {file.FileName}: loaded {loaded} signatures");
@@ -389,9 +405,11 @@ public class ClamAvService
 
                 foreach (var ext in supportedExtensions)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var sigFiles = Directory.GetFiles(DbDir, ext);
                     foreach (var sigFile in sigFiles)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         try
                         {
                             string content = File.ReadAllText(sigFile);
@@ -401,6 +419,7 @@ public class ClamAvService
                         catch { }
                     }
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 App.Engine.Compile();
                 _signaturesLoaded = true;
                 TrimMemory();

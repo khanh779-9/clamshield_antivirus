@@ -98,7 +98,7 @@ public class StatusToColorConverter : IValueConverter
         {
             "pass" or "installed" or "success" or "clean" or "protected" =>
                 Color.FromRgb(0xA6, 0xE3, 0xA1), // Green
-            "warning" or "partial" =>
+            "warning" or "partial" or "cancelled" =>
                 Color.FromRgb(0xF9, 0xE2, 0xAF), // Amber
             "fail" or "error" or "infected" or "notinstalled" =>
                 Color.FromRgb(0xF3, 0x8B, 0xA8), // Red
@@ -149,7 +149,7 @@ public class StatusToIconConverter : IValueConverter
         return status switch
         {
             "pass" or "installed" or "success" or "clean" => "✓",
-            "warning" or "partial" => "⚠",
+            "warning" or "partial" or "cancelled" => "⚠",
             "fail" or "error" or "infected" or "notinstalled" => "✗",
             "scanning" or "updating" => "⟳",
             _ => "?"
