@@ -172,10 +172,12 @@ public class ClamAvService
                     }
 
                     var threats = App.Engine.ScanFile(currentFile, scanOptions);
+                    System.Diagnostics.Debug.WriteLine($"=== ScanAsync: {currentFile} found {threats.Count} threats ===");
                     if (threats.Count > 0)
                     {
                         foreach (var threat in threats)
                         {
+                            System.Diagnostics.Debug.WriteLine($"=== Threat: {threat.ThreatName} type={threat.MatchType} ===");
                             Interlocked.Increment(ref threatsFound);
                             lock (result.Threats)
                             {

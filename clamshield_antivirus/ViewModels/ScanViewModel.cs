@@ -23,6 +23,7 @@ public class ScanViewModel : ViewModelBase
     private ScanProfile? _selectedProfile;
     private string _backendText = "Backend: clamscan (standalone)";
     private CancellationTokenSource? _cts;
+    private volatile bool _cancelRequested;
 
     public ObservableCollection<string> Targets { get; } = new();
     public ObservableCollection<ScanProfile> Profiles { get; } = new();
@@ -114,7 +115,7 @@ public class ScanViewModel : ViewModelBase
             OnPropertyChanged(nameof(CanStartScan));
         });
         StartScanCommand = new AsyncRelayCommand(StartScanAsync);
-        CancelScanCommand = new RelayCommand(CancelScan);
+        CancelScanCommand = new RelayCommand(CancelScan, () => !_cancelRequested);
         EicarTestCommand = new AsyncRelayCommand(RunEicarTestAsync);
         QuarantineAllCommand = new AsyncRelayCommand(QuarantineAllAsync);
         ExcludePathCommand = new RelayCommand(param =>
@@ -206,6 +207,7 @@ public class ScanViewModel : ViewModelBase
     {
         if (Targets.Count == 0) return;
 
+        _cancelRequested = false;
         IsScanning = true;
         Result = null;
         Progress = new ScanProgress { StatusText = "Initializing scan..." };
@@ -214,13 +216,16 @@ public class ScanViewModel : ViewModelBase
 
         var progressReporter = new Progress<ScanProgress>(p =>
         {
-            Progress = p;
+            if (!_cancelRequested)
+                Progress = p;
         });
 
         try
         {
             var scanTargets = Targets.ToList();
             var scanResult = await App.ClamAv.ScanAsync(scanTargets, SelectedProfile, progressReporter, _cts.Token);
+            if (_cancelRequested) return;
+
             Result = scanResult;
 
             // Log to historical database
@@ -241,19 +246,37 @@ public class ScanViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Progress = new ScanProgress { StatusText = $"Error: {ex.Message}" };
+            if (!_cancelRequested)
+                Progress = new ScanProgress { StatusText = $"Error: {ex.Message}" };
         }
         finally
         {
-            IsScanning = false;
-            _cts = null;
+            if (!_cancelRequested)
+            {
+                IsScanning = false;
+                _cts = null;
+            }
         }
     }
 
     private void CancelScan()
     {
-        _cts?.Cancel();
-        Progress = new ScanProgress { StatusText = "Cancelling scan..." };
+        if (_cts == null || _cancelRequested) return;
+        _cancelRequested = true;
+        _cts.Cancel();
+
+        IsScanning = false;
+        _cts = null;
+
+        Result = new ScanResult
+        {
+            Status = "Cancelled",
+            ScanTime = DateTime.Now,
+            Duration = TimeSpan.Zero,
+            ScanPath = string.Join(", ", Targets)
+        };
+
+        Progress = new ScanProgress { StatusText = "Scan cancelled." };
     }
 
     private async Task RunEicarTestAsync()

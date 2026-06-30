@@ -839,10 +839,12 @@ public class LdbSubPattern
     public int SectionIndex { get; set; } // 1-based, 0 = none
     public ParsedPattern Pattern { get; set; } = new();
 
-    public int GetEffectiveOffset(int dataLength)
+    public int GetEffectiveOffset(int dataLength, int entryPointRawOffset = -1)
     {
         if (StartOffset < 0) return 0;
         if (IsEofRelative) return Math.Max(0, dataLength + StartOffset);
+        if (IsEpRelative && entryPointRawOffset >= 0)
+            return Math.Max(0, entryPointRawOffset + StartOffset);
         return StartOffset;
     }
 }
@@ -858,13 +860,13 @@ public class LdbSignature
     public long MinFileSize { get; set; }
     public long MaxFileSize { get; set; } = long.MaxValue;
 
-    public bool Match(byte[] data, List<ThreatDetail> existingThreats, long fileSize)
+    public bool Match(byte[] data, List<ThreatDetail> existingThreats, long fileSize, int entryPointRawOffset = -1)
     {
         if (fileSize < MinFileSize || fileSize > MaxFileSize) return false;
         int[] counts = new int[SubPatterns.Count];
         for (int i = 0; i < SubPatterns.Count; i++)
         {
-            int startOff = SubPatterns[i].GetEffectiveOffset(data.Length);
+            int startOff = SubPatterns[i].GetEffectiveOffset(data.Length, entryPointRawOffset);
             counts[i] = PatternCache.CountMatches(data, startOff, SubPatterns[i].Pattern);
         }
         return ExpressionEvaluator.Evaluate(LogicalExpression, counts);
@@ -926,6 +928,7 @@ public class ClamAvEngine
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _puaSignatureNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
+    private readonly Dictionary<string, (string Name, byte[] Pattern)> _staticSignatures = new(StringComparer.OrdinalIgnoreCase);
 
     // Cache to pool and deduplicate signature names
     private readonly Dictionary<string, string> _namePool = new(StringComparer.OrdinalIgnoreCase);
@@ -987,6 +990,7 @@ public class ClamAvEngine
         });
 
         _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
+        _staticSignatures["Eicar-Test-Signature"] = ("Eicar-Test-Signature", eicarPattern);
 
         _md5Signatures[Hash128.Parse("44d88612fea8a8f36de82e1278abb02f")] = ("Eicar-Test-Signature-MD5", -1);
         _sha256Signatures[Hash256.Parse("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")] = ("Eicar-Test-Signature-SHA256", -1);
@@ -1014,6 +1018,7 @@ public class ClamAvEngine
             _ignoredSigs.Clear();
             _puaSignatureNames.Clear();
             _acEngine.Clear();
+            _staticSignatures.Clear();
             PatternCache.Clear();
             _namePool.Clear();
             _totalSignatures = 0;
@@ -1298,9 +1303,32 @@ public class ClamAvEngine
 
         var offType = ParseOffset(offset, out var offVal, out var maxShift, out var minOff, out var maxOff, out var secIdx);
 
-        if (!parsed.HasWildcards && offType == NdbOffsetType.Any && parsed.PrefixBytes != null)
+        // Check if signature is entirely static (contains only HexConstraints without wildcards/gaps)
+        bool isStatic = !parsed.HasWildcards;
+        byte[]? fullBytes = null;
+        if (isStatic && parsed.Elements.Count >= 6)
         {
-            _acEngine.AddPattern(parsed.PrefixBytes, name);
+            fullBytes = new byte[parsed.Elements.Count];
+            for (int k = 0; k < parsed.Elements.Count; k++)
+            {
+                if (parsed.Elements[k] is HexConstraint hc && hc.HighNibble.HasValue && hc.LowNibble.HasValue)
+                {
+                    fullBytes[k] = (byte)((hc.HighNibble.Value << 4) | hc.LowNibble.Value);
+                }
+                else
+                {
+                    isStatic = false;
+                    fullBytes = null;
+                    break;
+                }
+            }
+        }
+
+        if (isStatic && fullBytes != null && offType == NdbOffsetType.Any && parsed.PrefixBytes != null)
+        {
+            string uniqueKey = $"{name}_{_staticSignatures.Count}";
+            _staticSignatures[uniqueKey] = (name, fullBytes);
+            _acEngine.AddPattern(parsed.PrefixBytes, uniqueKey);
         }
         else
         {
@@ -1595,8 +1623,32 @@ public class ClamAvEngine
         var parsed = PatternCache.GetOrParse(hexPatternStr);
         if (parsed.Elements.Count == 0 || parsed.PrefixBytes == null) return 0;
 
-        if (!parsed.HasWildcards)
-            _acEngine.AddPattern(parsed.PrefixBytes, name);
+        bool isStatic = !parsed.HasWildcards;
+        byte[]? fullBytes = null;
+        if (isStatic && parsed.Elements.Count >= 6)
+        {
+            fullBytes = new byte[parsed.Elements.Count];
+            for (int k = 0; k < parsed.Elements.Count; k++)
+            {
+                if (parsed.Elements[k] is HexConstraint hc && hc.HighNibble.HasValue && hc.LowNibble.HasValue)
+                {
+                    fullBytes[k] = (byte)((hc.HighNibble.Value << 4) | hc.LowNibble.Value);
+                }
+                else
+                {
+                    isStatic = false;
+                    fullBytes = null;
+                    break;
+                }
+            }
+        }
+
+        if (isStatic && fullBytes != null && parsed.PrefixBytes != null)
+        {
+            string uniqueKey = $"{name}_{_staticSignatures.Count}";
+            _staticSignatures[uniqueKey] = (name, fullBytes);
+            _acEngine.AddPattern(parsed.PrefixBytes, uniqueKey);
+        }
         else
         {
             AddStoredPattern(new StoredPattern
@@ -1847,11 +1899,13 @@ public class ClamAvEngine
         }
     }
 
-    public List<ThreatDetail> ScanFile(string filePath, ScanOptions? options = null)
+    public List<ThreatDetail> ScanFile(string filePath, ScanOptions? options = null, CancellationToken cancellationToken = default)
     {
         _engineLock.EnterReadLock();
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             options ??= new ScanOptions();
             var threats = new List<ThreatDetail>();
 
@@ -1866,7 +1920,7 @@ public class ClamAvEngine
                 options.MaxScanSize,
                 options.MaxFileSize);
 
-            ScanFileInternal(filePath, options, threats, recursionCtx, 0);
+            ScanFileInternal(filePath, options, threats, recursionCtx, 0, cancellationToken);
             return threats;
         }
         finally
@@ -1880,8 +1934,11 @@ public class ClamAvEngine
         ScanOptions options,
         List<ThreatDetail> threats,
         RecursionContext recursionCtx,
-        int depth)
+        int depth,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (recursionCtx.LimitExceeded || threats.Count > 0 && !options.AllMatchMode)
             return;
 
@@ -1904,6 +1961,8 @@ public class ClamAvEngine
                         int entryPos = 0;
                         foreach (var entry in archiveEntries)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
+
                             entryPos++;
                             if (recursionCtx.LimitExceeded || threats.Count > 0 && !options.AllMatchMode)
                                 break;
@@ -1935,7 +1994,7 @@ public class ClamAvEngine
                                 File.WriteAllBytes(tempPath, entry.Content);
                                 recursionCtx.RecordFile(entry.FileSize);
 
-                                ScanFileInternal(tempPath, options, threats, recursionCtx, depth + 1);
+                                ScanFileInternal(tempPath, options, threats, recursionCtx, depth + 1, cancellationToken);
                             }
                             finally
                             {
@@ -1955,7 +2014,31 @@ public class ClamAvEngine
 
             recursionCtx.RecordFile(fileInfo.Length);
 
-            ScanFileContent(filePath, options, threats, fileType, recursionCtx);
+            // Attempt UPX unpacking for PE files
+            if (fileType == ClamFileType.MSEXE && depth == 0)
+            {
+                try
+                {
+                    byte[] allBytes = File.ReadAllBytes(filePath);
+                    if (TryUnpackPe(allBytes, out var unpacked))
+                    {
+                        string tempPath = Path.Combine(Path.GetTempPath(), $"clamui_unpacked_{Guid.NewGuid():N}.exe");
+                        try
+                        {
+                            File.WriteAllBytes(tempPath, unpacked);
+                            recursionCtx.RecordFile(unpacked.Length);
+                            ScanFileInternal(tempPath, options, threats, recursionCtx, depth + 1, cancellationToken);
+                        }
+                        finally
+                        {
+                            try { File.Delete(tempPath); } catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            ScanFileContent(filePath, options, threats, fileType, recursionCtx, cancellationToken);
         }
         catch (UnauthorizedAccessException)
         {
@@ -1984,8 +2067,10 @@ public class ClamAvEngine
         ScanOptions options,
         List<ThreatDetail> threats,
         ClamFileType fileType,
-        RecursionContext recursionCtx)
+        RecursionContext recursionCtx,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             string md5Hash, sha256Hash, sha1Hash;
@@ -2010,12 +2095,15 @@ public class ClamAvEngine
                 if (fileSize > scanLen)
                 {
                     byte[] buf = new byte[65536];
-                    int read;
+                    int read, totalRead = 0;
                     while ((read = stream.Read(buf, 0, buf.Length)) > 0)
                     {
                         incMd5.AppendData(buf, 0, read);
                         incSha256.AppendData(buf, 0, read);
                         incSha1.AppendData(buf, 0, read);
+                        totalRead += read;
+                        if (totalRead % (10 * 1024 * 1024) == 0) // every 10MB
+                            cancellationToken.ThrowIfCancellationRequested();
                     }
                 }
 
@@ -2023,6 +2111,8 @@ public class ClamAvEngine
                 sha256Hash = ConvertToHexString(incSha256.GetHashAndReset());
                 sha1Hash = ConvertToHexString(incSha1.GetHashAndReset());
             }
+
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] Scan {filePath} type={fileType} size={fileSize} md5={md5Hash} sigCount={_md5Signatures.Count}\n"); } catch { }
 
             if (threats.Count > 0 && !options.AllMatchMode) return;
 
@@ -2048,23 +2138,33 @@ public class ClamAvEngine
             }
 
             var acMatches = _acEngine.Search(fileBytes);
-            foreach (var match in acMatches)
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] AC found {acMatches.Count} matches, hash thread {_md5Signatures.Count} sigs\n"); } catch { }
+            foreach (var matchKey in acMatches)
             {
-                if (!IsIgnored(match) && !threats.Exists(t => t.ThreatName == match) && !ShouldSkipPua(match, options))
+                if (_staticSignatures.TryGetValue(matchKey, out var entry))
                 {
-                    threats.Add(new ThreatDetail
+                    string name = entry.Name;
+                    if (!IsIgnored(name) && !threats.Exists(t => t.ThreatName == name) && !ShouldSkipPua(name, options))
                     {
-                        FilePath = filePath,
-                        ThreatName = match,
-                        Severity = DetermineSeverity(match),
-                        MatchType = "Content"
-                    });
-                    if (!options.AllMatchMode) return;
+                        bool verified = fileBytes.AsSpan().IndexOf(entry.Pattern) >= 0;
+                        if (verified)
+                        {
+                            threats.Add(new ThreatDetail
+                            {
+                                FilePath = filePath,
+                                ThreatName = name,
+                                Severity = DetermineSeverity(name),
+                                MatchType = "Content"
+                            });
+                            if (!options.AllMatchMode) return;
+                        }
+                    }
                 }
             }
 
-            int fileTargetType = GetFileTargetType(filePath);
+            int fileTargetType = GetFileTargetType(fileType);
             int? entryPointOff = null;
+            int ldbEpRawOffset = -1;
 
             List<StoredPattern>? targetBucket = null;
             if (fileTargetType != 0 && _patternsByTarget.TryGetValue((uint)fileTargetType, out var b))
@@ -2087,6 +2187,10 @@ public class ClamAvEngine
                     AddStoredPatternThreat(threats, filePath, sp, options);
             }
 
+            // Pre-compute entry point offset for LDB EP-relative subsigs
+            if (ldbEpRawOffset < 0 && fileTargetType == 1 && fileBytes.Length >= 0x40)
+                ldbEpRawOffset = GetPeEntryPointOffset(fileBytes);
+
             foreach (var ldb in _ldbSignatures)
             {
                 if (threats.Count > 0 && !options.AllMatchMode) return;
@@ -2095,7 +2199,7 @@ public class ClamAvEngine
                 if (threats.Exists(t => t.ThreatName == ldb.Name)) continue;
                 if (ldb.TargetType != 0 && ldb.TargetType != (uint)fileTargetType) continue;
 
-                if (ldb.Match(fileBytes, threats, fileBytes.Length))
+                if (ldb.Match(fileBytes, threats, fileBytes.Length, ldbEpRawOffset))
                 {
                     threats.Add(new ThreatDetail
                     {
@@ -2437,8 +2541,10 @@ public class ClamAvEngine
         long fileSize,
         ScanOptions options)
     {
+        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] CheckHash: md5={md5Hash} size={fileSize} md5Sigs={_md5Signatures.Count}\n"); } catch { }
         if (_md5Signatures.TryGetValue(Hash128.Parse(md5Hash), out var md5Entry))
         {
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] MD5 MATCH: {md5Entry.Name} size={md5Entry.Size} ignored={IsIgnored(md5Entry.Name)} pua={ShouldSkipPua(md5Entry.Name, options)}\n"); } catch { }
             if ((md5Entry.Size < 0 || md5Entry.Size == fileSize) && !IsIgnored(md5Entry.Name) && !ShouldSkipPua(md5Entry.Name, options))
             {
                 threats.Add(new ThreatDetail
@@ -3026,21 +3132,21 @@ public class ClamAvEngine
         return "High";
     }
 
-    private static int GetFileTargetType(string filePath)
+    private static int GetFileTargetType(ClamFileType fileType)
     {
-        string ext = Path.GetExtension(filePath).ToLowerInvariant();
-        return ext switch
+        return fileType switch
         {
-            ".exe" or ".dll" or ".sys" or ".ocx" => 1,
-            ".doc" or ".xls" or ".ppt" or ".docx" or ".xlsx" or ".pptx" => 2,
-            ".htm" or ".html" => 3,
-            ".eml" or ".msg" or ".mbox" => 4,
-            ".gif" or ".png" or ".jpg" or ".jpeg" or ".tiff" => 5,
-            ".elf" => 6,
-            ".txt" or ".csv" or ".json" or ".xml" => 7,
-            ".pdf" => 10,
-            ".swf" => 11,
-            ".jar" or ".class" => 12,
+            ClamFileType.MSEXE => 1,
+            ClamFileType.MSOLE2 => 2,
+            ClamFileType.HTML or ClamFileType.HTML_UTF16 => 3,
+            ClamFileType.MAIL => 4,
+            ClamFileType.GIF or ClamFileType.PNG or ClamFileType.JPEG or ClamFileType.TIFF => 5,
+            ClamFileType.ELF => 6,
+            ClamFileType.TEXT_ASCII => 7,
+            ClamFileType.MACHO or ClamFileType.MACHO_UNIBIN => 9,
+            ClamFileType.PDF => 10,
+            ClamFileType.SWF => 11,
+            ClamFileType.JAVA => 12,
             _ => 0
         };
     }
@@ -3051,6 +3157,151 @@ public class ClamAvEngine
         foreach (byte b in bytes)
             sb.Append(b.ToString("x2"));
         return sb.ToString();
+    }
+
+    private static bool TryUnpackPe(byte[] fileBytes, out byte[] unpackedBytes)
+    {
+        unpackedBytes = Array.Empty<byte>();
+        try
+        {
+            var peInfo = PeParser.Parse(fileBytes);
+            if (!peInfo.IsValid || peInfo.Sections.Length < 2)
+                return false;
+
+            int upx0Idx = -1, upx1Idx = -1;
+            uint expectedDecompressedSize = 0;
+            for (int i = 0; i < peInfo.Sections.Length; i++)
+            {
+                string sn = peInfo.Sections[i].Name.TrimEnd('\0');
+                if (sn.Equals("UPX0", StringComparison.OrdinalIgnoreCase))
+                {
+                    upx0Idx = i;
+                    expectedDecompressedSize = peInfo.Sections[i].VirtualSize;
+                }
+                else if (sn.Equals("UPX1", StringComparison.OrdinalIgnoreCase))
+                    upx1Idx = i;
+            }
+            if (upx0Idx < 0 || upx1Idx < 0 || expectedDecompressedSize == 0)
+                return false;
+
+            var upx1 = peInfo.Sections[upx1Idx];
+            if (upx1.RawSize < 32 || upx1.RawOffset + upx1.RawSize > fileBytes.Length)
+                return false;
+
+            // Read UPX1 raw content
+            byte[] compressed = new byte[upx1.RawSize];
+            Array.Copy(fileBytes, upx1.RawOffset, compressed, 0, upx1.RawSize);
+
+            // Try NRV2B decompression from different offsets within UPX1
+            int maxTry = (int)Math.Min(upx1.RawSize, 0x400);
+            for (int off = 0; off <= maxTry; off += 4)
+            {
+                if (off + 16 > upx1.RawSize) break;
+                var result = DecompressNrv2B(compressed, off, (int)upx1.RawSize - off, expectedDecompressedSize);
+                if (result.Length > 64 && result[0] == 0x4D && result[1] == 0x5A)
+                {
+                    // Verify it's a valid PE
+                    int peOff = BitConverter.ToInt32(result, 0x3C);
+                    if (peOff > 0 && peOff + 4 < result.Length &&
+                        result[peOff] == 0x50 && result[peOff + 1] == 0x45)
+                    {
+                        unpackedBytes = result;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static byte[] DecompressNrv2B(byte[] input, int offset, int length, uint expectedSize)
+    {
+        if (expectedSize == 0 || expectedSize > 100 * 1024 * 1024)
+            return Array.Empty<byte>();
+
+        byte[] output = new byte[expectedSize];
+        int ip = offset;
+        int ipEnd = offset + length;
+        int op = 0;
+
+        uint bb = 0;
+        int bc = 0;
+
+        uint GetBit()
+        {
+            if (bc == 0)
+            {
+                if (ip + 4 > ipEnd) return 2;
+                bb = (uint)(input[ip] | (input[ip + 1] << 8) | (input[ip + 2] << 16) | (input[ip + 3] << 24));
+                ip += 4;
+                bc = 32;
+            }
+            uint b = (bb >> 31);
+            bb <<= 1;
+            bc--;
+            return b;
+        }
+
+        while (op < expectedSize)
+        {
+            if (GetBit() == 1)
+            {
+                if (ip >= ipEnd) break;
+                output[op++] = input[ip++];
+                continue;
+            }
+
+            uint len = 2;
+            if (GetBit() == 1)
+            {
+                do
+                {
+                    len += GetBit();
+                    len += GetBit();
+                } while (GetBit() == 0);
+                len += 2;
+            }
+
+            uint tmp = 0;
+            do
+            {
+                tmp = (tmp << 1) | GetBit();
+            } while (GetBit() == 0);
+
+            uint off;
+            if (tmp != 0)
+            {
+                if (ip >= ipEnd) break;
+                off = ((tmp - 1) << 8) | input[ip++];
+                if (off == 0) break;
+            }
+            else
+            {
+                if (ip + 2 > ipEnd) break;
+                off = (uint)(input[ip++] << 8);
+                off >>= 3;
+                off |= input[ip++];
+            }
+
+            if (off == 0 || off > op) break;
+
+            while (len-- > 0)
+            {
+                if (op >= expectedSize) break;
+                output[op] = output[op - (int)off];
+                op++;
+            }
+        }
+
+        if (op < expectedSize)
+        {
+            Array.Resize(ref output, op);
+        }
+        return output;
     }
 
     private static string SanitizeFileName(string fileName)
