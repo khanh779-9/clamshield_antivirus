@@ -11,6 +11,7 @@ using Microsoft.Win32;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Models;
 using clamshield_antivirus.Views;
+using clamshield_antivirus.Services.ScanSvc;
 
 namespace clamshield_antivirus.ViewModels;
 

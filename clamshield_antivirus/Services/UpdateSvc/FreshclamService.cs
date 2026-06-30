@@ -8,7 +8,9 @@ using System.Collections.Generic;
 using clamshield_antivirus.Models;
 using clamshield_antivirus.Converters;
 
-namespace clamshield_antivirus.Services;
+using clamshield_antivirus.Services;
+
+namespace clamshield_antivirus.Services.UpdateSvc;
 
 public class FreshclamService
 {

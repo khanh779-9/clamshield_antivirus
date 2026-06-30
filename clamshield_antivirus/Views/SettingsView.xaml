@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}">
@@ -15,12 +16,38 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Settings" Style="{StaticResource HeadingText}"/>
+            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Title]}" Style="{StaticResource HeadingText}"/>
             <TextBlock Text="Configure ClamUI behavior and integrations" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
+
+                <!-- Language Card -->
+                <Border Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.LangTitle]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.LangDesc]}" 
+                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
+
+                        <Border Style="{StaticResource InlineSettingRow}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="200"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.LangTitle]}" FontWeight="SemiBold" FontSize="13"/>
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" 
+                                          ItemsSource="{Binding Languages}" 
+                                          SelectedItem="{Binding SelectedLanguage}" 
+                                          DisplayMemberPath="DisplayName" 
+                                          VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
@@ -127,7 +154,7 @@
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
                         <TextBlock Text="Scan Options" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Configure limits and file types for scanning." 
+                        <TextBlock Text="Configure limits, engines, and file types for scanning." 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -146,6 +173,25 @@
                                 </StackPanel>
                             </Grid>
                         </Border>
+
+                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,12"/>
+                        <TextBlock Text="Scan Engines &amp; Features" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,10"/>
+                        <UniformGrid Columns="2" Rows="7">
+                            <CheckBox IsChecked="{Binding AllMatchMode}" Content="Deep Scan (All-Match Mode)" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding HeuristicAlerts}" Content="Heuristic Analysis" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertPua}" Content="Detect PUA (Potentially Unwanted)" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseArchives}" Content="Scan Compressed Archives" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParsePe}" Content="Scan PE Executables" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParsePdf}" Content="Scan PDF Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseOle2}" Content="Scan MS Office Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseHtml}" Content="Scan HTML Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseMail}" Content="Scan Mail Files" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseElf}" Content="Scan Linux ELF Binaries" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseSwf}" Content="Scan Adobe Flash Files" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseRtf}" Content="Scan RTF Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertPdf}" Content="Alert Suspicious PDFs" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertMacros}" Content="Alert Macro Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                        </UniformGrid>
                     </StackPanel>
                 </Border>
 
@@ -172,6 +218,39 @@
 
                                 <TextBlock Text="{Binding RealtimeScanned, StringFormat='Files scanned: {0}'}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,0,0,8"
                                            Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}"/>
+
+                                 <StackPanel Margin="0,4,0,12" Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.RealtimeScope]}" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,4,0,8"/>
+                                    
+                                    <RadioButton IsChecked="{Binding RealtimeScanAll}" GroupName="RealtimeExtScope" Margin="0,0,0,10" VerticalContentAlignment="Top">
+                                        <StackPanel Margin="6,-2,0,0">
+                                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanAllExt]}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanAllExtDesc]}" 
+                                                       TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    
+                                    <RadioButton IsChecked="{Binding RealtimeScanOptimized}" GroupName="RealtimeExtScope" Margin="0,4,0,8" VerticalContentAlignment="Top">
+                                        <StackPanel Margin="6,-2,0,0">
+                                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOptExt]}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
+                                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOptExtDesc]}" 
+                                                       TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOptExtList]}" 
+                                                       TextWrapping="Wrap" FontSize="11" Foreground="#4A90E2" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </RadioButton>
+
+                                    <Grid Margin="22,4,0,4" IsEnabled="{Binding RealtimeScanOptimized}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.CustomExt]}" FontSize="12" Foreground="{StaticResource DimTextBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBox Grid.Column="1" Text="{Binding RealtimeCustomExtensions, UpdateSourceTrigger=PropertyChanged}" 
+                                                 ToolTip="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.CustomExtToolTip]}" 
+                                                 VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
 
                                 <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,10"/>
 

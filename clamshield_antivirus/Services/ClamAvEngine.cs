@@ -6,9 +6,44 @@ using System.Threading;
 using System.Security.Cryptography;
 using System.Collections.Generic;
 using System.IO.Compression;
+using System.Security.Cryptography.X509Certificates;
 using clamshield_antivirus.Models;
+using clamshield_antivirus.Services.ScanSvc;
 
 namespace clamshield_antivirus.Services;
+
+internal static class HexParser
+{
+    public static ulong ParseUInt64(ReadOnlySpan<char> span)
+    {
+        ulong result = 0;
+        for (int i = 0; i < span.Length; i++)
+        {
+            char c = span[i];
+            uint val = 0;
+            if (c >= '0' && c <= '9') val = (uint)(c - '0');
+            else if (c >= 'a' && c <= 'f') val = (uint)(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') val = (uint)(c - 'A' + 10);
+            result = (result << 4) | val;
+        }
+        return result;
+    }
+
+    public static uint ParseUInt32(ReadOnlySpan<char> span)
+    {
+        uint result = 0;
+        for (int i = 0; i < span.Length; i++)
+        {
+            char c = span[i];
+            uint val = 0;
+            if (c >= '0' && c <= '9') val = (uint)(c - '0');
+            else if (c >= 'a' && c <= 'f') val = (uint)(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') val = (uint)(c - 'A' + 10);
+            result = (result << 4) | val;
+        }
+        return result;
+    }
+}
 
 public struct Hash128 : IEquatable<Hash128>
 {
@@ -31,13 +66,15 @@ public struct Hash128 : IEquatable<Hash128>
         }
     }
 
-    public static Hash128 Parse(string hex)
+    public static Hash128 Parse(ReadOnlySpan<char> hex)
     {
         if (hex.Length < 32) return default;
-        ulong high = Convert.ToUInt64(hex.Substring(0, 16), 16);
-        ulong low = Convert.ToUInt64(hex.Substring(16, 16), 16);
+        ulong high = HexParser.ParseUInt64(hex.Slice(0, 16));
+        ulong low = HexParser.ParseUInt64(hex.Slice(16, 16));
         return new Hash128(low, high);
     }
+
+    public static Hash128 Parse(string hex) => Parse(hex.AsSpan());
 }
 
 public struct Hash256 : IEquatable<Hash256>
@@ -61,15 +98,17 @@ public struct Hash256 : IEquatable<Hash256>
         }
     }
 
-    public static Hash256 Parse(string hex)
+    public static Hash256 Parse(ReadOnlySpan<char> hex)
     {
         if (hex.Length < 64) return default;
-        ulong a = Convert.ToUInt64(hex.Substring(0, 16), 16);
-        ulong b = Convert.ToUInt64(hex.Substring(16, 16), 16);
-        ulong c = Convert.ToUInt64(hex.Substring(32, 16), 16);
-        ulong d = Convert.ToUInt64(hex.Substring(48, 16), 16);
+        ulong a = HexParser.ParseUInt64(hex.Slice(0, 16));
+        ulong b = HexParser.ParseUInt64(hex.Slice(16, 16));
+        ulong c = HexParser.ParseUInt64(hex.Slice(32, 16));
+        ulong d = HexParser.ParseUInt64(hex.Slice(48, 16));
         return new Hash256 { A = a, B = b, C = c, D = d };
     }
+
+    public static Hash256 Parse(string hex) => Parse(hex.AsSpan());
 }
 
 public struct Hash160 : IEquatable<Hash160>
@@ -91,14 +130,16 @@ public struct Hash160 : IEquatable<Hash160>
         }
     }
 
-    public static Hash160 Parse(string hex)
+    public static Hash160 Parse(ReadOnlySpan<char> hex)
     {
         if (hex.Length < 40) return default;
-        ulong low = Convert.ToUInt64(hex.Substring(0, 16), 16);
-        ulong mid = Convert.ToUInt64(hex.Substring(16, 16), 16);
-        uint high = Convert.ToUInt32(hex.Substring(32, 8), 16);
+        ulong low = HexParser.ParseUInt64(hex.Slice(0, 16));
+        ulong mid = HexParser.ParseUInt64(hex.Slice(16, 16));
+        uint high = HexParser.ParseUInt32(hex.Slice(32, 8));
         return new Hash160 { Low = low, Mid = mid, High = high };
     }
+
+    public static Hash160 Parse(string hex) => Parse(hex.AsSpan());
 }
 
 public class HexConstraint
@@ -121,6 +162,21 @@ public class AltConstraint
 public class NegatedAltConstraint
 {
     public ParsedPattern[] Alternatives = Array.Empty<ParsedPattern>();
+}
+
+public class CrbSignature
+{
+    public string Name { get; set; } = string.Empty;
+    public bool Trusted { get; set; }
+    public string Subject { get; set; } = string.Empty;
+    public string Serial { get; set; } = string.Empty;
+    public string Pubkey { get; set; } = string.Empty;
+    public string Exponent { get; set; } = string.Empty;
+    public bool CodeSign { get; set; }
+    public bool TimeSign { get; set; }
+    public bool CertSign { get; set; }
+    public long NotBefore { get; set; }
+    public string Comment { get; set; } = string.Empty;
 }
 
 public class CdbSignature
@@ -147,7 +203,7 @@ public class ParsedPattern
 public static class PatternCache
 {
     private static readonly Dictionary<string, ParsedPattern> _cache = new();
-    private const int MaxSize = 2000;
+    private const int MaxSize = 100000;
 
     public static ParsedPattern GetOrParse(string hexStr)
     {
@@ -176,14 +232,36 @@ public static class PatternCache
                 result.Elements.Add(new GapConstraint { Min = 0, Max = -1 });
                 i++;
             }
+            else if (hexStr[i] == '!' && i + 1 < hexStr.Length && hexStr[i + 1] == '(')
+            {
+                result.HasWildcards = true;
+                int end = hexStr.IndexOf(')', i + 1);
+                if (end < 0) return result;
+                string altGroup = hexStr.Substring(i + 2, end - i - 2);
+                var alts = altGroup.Split('|');
+                var altPatterns = new List<ParsedPattern>();
+                foreach (var alt in alts)
+                {
+                    var trimmed = alt.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        var parsedAlt = ParseMiniPattern(trimmed);
+                        if (parsedAlt.Elements.Count > 0)
+                            altPatterns.Add(parsedAlt);
+                    }
+                }
+                if (altPatterns.Count > 0)
+                {
+                    result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
+                }
+                i = end + 1;
+            }
             else if (hexStr[i] == '(')
             {
                 result.HasWildcards = true;
                 int end = hexStr.IndexOf(')', i);
                 if (end < 0) return result;
                 string altGroup = hexStr.Substring(i + 1, end - i - 1);
-                bool negate = altGroup.StartsWith('!');
-                if (negate) altGroup = altGroup.Substring(1);
                 bool isBoundary = altGroup == "B" || altGroup == "L" || altGroup == "W";
                 if (isBoundary)
                 {
@@ -204,10 +282,7 @@ public static class PatternCache
                 }
                 if (altPatterns.Count > 0)
                 {
-                    if (negate)
-                        result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
-                    else
-                        result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
+                    result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
                 }
                 i = end + 1;
             }
@@ -315,14 +390,11 @@ public static class PatternCache
         int i = 0;
         while (i < hex.Length)
         {
-            if (hex[i] == '(')
+            if (hex[i] == '!' && i + 1 < hex.Length && hex[i + 1] == '(')
             {
-                int end = hex.IndexOf(')', i);
+                int end = hex.IndexOf(')', i + 1);
                 if (end < 0) break;
-                string altGroup = hex.Substring(i + 1, end - i - 1);
-                bool negate = altGroup.StartsWith('!');
-                if (negate) altGroup = altGroup.Substring(1);
-                
+                string altGroup = hex.Substring(i + 2, end - i - 2);
                 var alts = altGroup.Split('|');
                 var altPatterns = new List<ParsedPattern>();
                 foreach (var alt in alts)
@@ -337,10 +409,30 @@ public static class PatternCache
                 }
                 if (altPatterns.Count > 0)
                 {
-                    if (negate)
-                        result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
-                    else
-                        result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
+                    result.Elements.Add(new NegatedAltConstraint { Alternatives = altPatterns.ToArray() });
+                }
+                i = end + 1;
+            }
+            else if (hex[i] == '(')
+            {
+                int end = hex.IndexOf(')', i);
+                if (end < 0) break;
+                string altGroup = hex.Substring(i + 1, end - i - 1);
+                var alts = altGroup.Split('|');
+                var altPatterns = new List<ParsedPattern>();
+                foreach (var alt in alts)
+                {
+                    var trimmed = alt.Trim();
+                    if (trimmed.Length > 0)
+                    {
+                        var parsedAlt = ParseMiniPattern(trimmed);
+                        if (parsedAlt.Elements.Count > 0)
+                            altPatterns.Add(parsedAlt);
+                    }
+                }
+                if (altPatterns.Count > 0)
+                {
+                    result.Elements.Add(new AltConstraint { Alternatives = altPatterns.ToArray() });
                 }
                 i = end + 1;
             }
@@ -471,7 +563,21 @@ public static class PatternCache
             int lo = b & 0xF;
             if (hc.HighNibble.HasValue && hc.HighNibble.Value != hi) return false;
             if (hc.LowNibble.HasValue && hc.LowNibble.Value != lo) return false;
-            return MatchElements(elements, ei + 1, data, di + 1);
+
+            int nextEi = ei + 1;
+            int nextDi = di + 1;
+            while (nextEi < elements.Count && elements[nextEi] is HexConstraint nextHc)
+            {
+                if (nextDi >= data.Length) return false;
+                byte nextB = data[nextDi];
+                int nextHi = (nextB >> 4) & 0xF;
+                int nextLo = nextB & 0xF;
+                if (nextHc.HighNibble.HasValue && nextHc.HighNibble.Value != nextHi) return false;
+                if (nextHc.LowNibble.HasValue && nextHc.LowNibble.Value != nextLo) return false;
+                nextEi++;
+                nextDi++;
+            }
+            return MatchElements(elements, nextEi, data, nextDi);
         }
         if (el is GapConstraint gap)
         {
@@ -532,7 +638,20 @@ public static class PatternCache
             if (hc.HighNibble.HasValue && hc.HighNibble.Value != hi) return false;
             if (hc.LowNibble.HasValue && hc.LowNibble.Value != lo) return false;
             di++;
-            return MatchElementsInner(elements, ei + 1, data, ref di);
+
+            int nextEi = ei + 1;
+            while (nextEi < elements.Count && elements[nextEi] is HexConstraint nextHc)
+            {
+                if (di >= data.Length) return false;
+                byte nextB = data[di];
+                int nextHi = (nextB >> 4) & 0xF;
+                int nextLo = nextB & 0xF;
+                if (nextHc.HighNibble.HasValue && nextHc.HighNibble.Value != nextHi) return false;
+                if (nextHc.LowNibble.HasValue && nextHc.LowNibble.Value != nextLo) return false;
+                di++;
+                nextEi++;
+            }
+            return MatchElementsInner(elements, nextEi, data, ref di);
         }
         if (el is GapConstraint gap)
         {
@@ -712,11 +831,27 @@ public enum NdbOffsetType
     VirtualImage
 }
 
+public class LdbSubPattern
+{
+    public int StartOffset { get; set; } = -1; // -1 = any (search entire file)
+    public bool IsEofRelative { get; set; }
+    public bool IsEpRelative { get; set; }
+    public int SectionIndex { get; set; } // 1-based, 0 = none
+    public ParsedPattern Pattern { get; set; } = new();
+
+    public int GetEffectiveOffset(int dataLength)
+    {
+        if (StartOffset < 0) return 0;
+        if (IsEofRelative) return Math.Max(0, dataLength + StartOffset);
+        return StartOffset;
+    }
+}
+
 public class LdbSignature
 {
     public string Name { get; set; } = string.Empty;
     public string LogicalExpression { get; set; } = string.Empty;
-    public List<ParsedPattern> SubPatterns { get; set; } = new();
+    public List<LdbSubPattern> SubPatterns { get; set; } = new();
     public uint TargetType { get; set; }
     public int MinEngineLevel { get; set; }
     public int MaxEngineLevel { get; set; } = 255;
@@ -728,7 +863,10 @@ public class LdbSignature
         if (fileSize < MinFileSize || fileSize > MaxFileSize) return false;
         int[] counts = new int[SubPatterns.Count];
         for (int i = 0; i < SubPatterns.Count; i++)
-            counts[i] = PatternCache.CountMatches(data, 0, SubPatterns[i]);
+        {
+            int startOff = SubPatterns[i].GetEffectiveOffset(data.Length);
+            counts[i] = PatternCache.CountMatches(data, startOff, SubPatterns[i].Pattern);
+        }
         return ExpressionEvaluator.Evaluate(LogicalExpression, counts);
     }
 }
@@ -740,6 +878,7 @@ public class ScanOptions
     public bool AlertPdf { get; set; } = false;
     public bool AlertMacros { get; set; } = false;
     public bool AlertSwf { get; set; } = false;
+    public bool AlertPua { get; set; } = false;
     public bool ParseArchives { get; set; } = true;
     public bool ParsePe { get; set; } = true;
     public bool ParsePdf { get; set; } = true;
@@ -770,19 +909,22 @@ public class StoredPattern
 
 public class ClamAvEngine
 {
-    private readonly Dictionary<Hash128, string> _md5Signatures = new();
-    private readonly Dictionary<Hash256, string> _sha256Signatures = new();
-    private readonly Dictionary<Hash160, string> _sha1Signatures = new();
+    private readonly Dictionary<Hash128, (string Name, long Size)> _md5Signatures = new();
+    private readonly Dictionary<Hash256, (string Name, long Size)> _sha256Signatures = new();
+    private readonly Dictionary<Hash160, (string Name, long Size)> _sha1Signatures = new();
     private readonly Dictionary<Hash128, string> _sectionMd5Signatures = new();
     private readonly Dictionary<Hash256, string> _sectionSha256Signatures = new();
+    private readonly Dictionary<Hash160, string> _sectionSha1Signatures = new();
     private readonly Dictionary<Hash128, (int Size, string Name)> _importHashSignatures = new();
     private readonly List<StoredPattern> _storedPatterns = new();
     private readonly Dictionary<uint, List<StoredPattern>> _patternsByTarget = new();
     private readonly List<StoredPattern> _type0Patterns = new();
     private readonly List<LdbSignature> _ldbSignatures = new();
     private readonly List<CdbSignature> _cdbSignatures = new();
-    private readonly HashSet<string> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<CrbSignature> _crbSignatures = new();
+    private readonly Dictionary<string, long> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _puaSignatureNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
 
     // Cache to pool and deduplicate signature names
@@ -802,10 +944,34 @@ public class ClamAvEngine
 
     private string Intern(string name)
     {
-        if (_namePool.TryGetValue(name, out var pooled))
+        var lookup = _namePool.GetAlternateLookup<ReadOnlySpan<char>>();
+        if (lookup.TryGetValue(name.AsSpan(), out var pooled))
             return pooled;
         _namePool[name] = name;
         return name;
+    }
+
+    private string Intern(ReadOnlySpan<char> nameSpan)
+    {
+        var lookup = _namePool.GetAlternateLookup<ReadOnlySpan<char>>();
+        if (lookup.TryGetValue(nameSpan, out var pooled))
+            return pooled;
+        string name = nameSpan.ToString();
+        _namePool[name] = name;
+        return name;
+    }
+
+    private bool IsIgnored(ReadOnlySpan<char> sigName)
+    {
+        var lookup = _ignoredSigs.GetAlternateLookup<ReadOnlySpan<char>>();
+        return lookup.Contains(sigName);
+    }
+
+    private bool ShouldSkipPua(ReadOnlySpan<char> sigName, ScanOptions options)
+    {
+        if (options.AlertPua) return false;
+        var lookup = _puaSignatureNames.GetAlternateLookup<ReadOnlySpan<char>>();
+        return lookup.Contains(sigName);
     }
 
     private void InitializeDefaultSignatures()
@@ -822,8 +988,8 @@ public class ClamAvEngine
 
         _acEngine.AddPattern(eicarPattern, "Eicar-Test-Signature");
 
-        _md5Signatures[Hash128.Parse("44d88612fea8a8f36de82e1278abb02f")] = "Eicar-Test-Signature-MD5";
-        _sha256Signatures[Hash256.Parse("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")] = "Eicar-Test-Signature-SHA256";
+        _md5Signatures[Hash128.Parse("44d88612fea8a8f36de82e1278abb02f")] = ("Eicar-Test-Signature-MD5", -1);
+        _sha256Signatures[Hash256.Parse("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")] = ("Eicar-Test-Signature-SHA256", -1);
     }
 
     public void Clear()
@@ -836,20 +1002,61 @@ public class ClamAvEngine
             _sha1Signatures.Clear();
             _sectionMd5Signatures.Clear();
             _sectionSha256Signatures.Clear();
+            _sectionSha1Signatures.Clear();
             _storedPatterns.Clear();
             _patternsByTarget.Clear();
             _type0Patterns.Clear();
             _importHashSignatures.Clear();
             _ldbSignatures.Clear();
             _cdbSignatures.Clear();
+            _crbSignatures.Clear();
             _fpHashes.Clear();
             _ignoredSigs.Clear();
+            _puaSignatureNames.Clear();
             _acEngine.Clear();
             PatternCache.Clear();
             _namePool.Clear();
             _totalSignatures = 0;
             _dbBuildTime = null;
             InitializeDefaultSignatures();
+        }
+        finally
+        {
+            _engineLock.ExitWriteLock();
+        }
+    }
+
+    public int LoadSignaturesFromStream(string fileName, Stream stream)
+    {
+        int loaded = 0;
+        string ext = Path.GetExtension(fileName).ToLowerInvariant();
+
+        using var reader = new StreamReader(stream, Encoding.ASCII);
+        string? line;
+
+        _engineLock.EnterWriteLock();
+        try
+        {
+            while ((line = reader.ReadLine()) != null)
+            {
+                var lineSpan = line.AsSpan().Trim();
+                if (lineSpan.IsEmpty || lineSpan.StartsWith("#") || lineSpan.StartsWith(";"))
+                    continue;
+
+                try
+                {
+                    loaded += LoadSignatureLine(ext, lineSpan);
+                }
+                catch
+                {
+                }
+            }
+
+            if (loaded > 0)
+            {
+                _totalSignatures += loaded;
+            }
+            return loaded;
         }
         finally
         {
@@ -870,13 +1077,13 @@ public class ClamAvEngine
         {
             while ((line = reader.ReadLine()) != null)
             {
-                line = line.Trim();
-                if (string.IsNullOrEmpty(line) || line.StartsWith('#') || line.StartsWith(';'))
+                var lineSpan = line.AsSpan().Trim();
+                if (lineSpan.IsEmpty || lineSpan.StartsWith("#") || lineSpan.StartsWith(";"))
                     continue;
 
                 try
                 {
-                    loaded += LoadSignatureLine(ext, line);
+                    loaded += LoadSignatureLine(ext, lineSpan);
                 }
                 catch
                 {
@@ -895,58 +1102,100 @@ public class ClamAvEngine
         }
     }
 
-    private int LoadSignatureLine(string ext, string line)
+    private int LoadSignatureLine(string ext, ReadOnlySpan<char> line)
     {
         return ext switch
         {
-            ".hdb" or ".hdu" => LoadHashSignature(line, HashType.MD5),
-            ".hsb" or ".hsu" => LoadHashSignature(line, HashType.SHA256),
-            ".mdb" or ".mdu" => LoadHashSignature(line, HashType.MD5, isSectionHash: true),
-            ".msb" or ".msu" => LoadHashSignature(line, HashType.SHA256, isSectionHash: true),
-            ".ndb" or ".ndu" => LoadNdbSignature(line),
-            ".ldb" or ".ldu" => LoadLdbSignature(line),
+            ".hdb" => LoadHashSignature(line, HashType.MD5),
+            ".hdu" => LoadHashSignature(line, HashType.MD5, isPua: true),
+            ".hsb" => LoadHashSignature(line, HashType.AutoDetect),
+            ".hsu" => LoadHashSignature(line, HashType.AutoDetect, isPua: true),
+            ".mdb" => LoadHashSignature(line, HashType.MD5, isSectionHash: true),
+            ".mdu" => LoadHashSignature(line, HashType.MD5, isSectionHash: true, isPua: true),
+            ".msb" => LoadHashSignature(line, HashType.AutoDetect, isSectionHash: true),
+            ".msu" => LoadHashSignature(line, HashType.AutoDetect, isSectionHash: true, isPua: true),
+            ".ndb" => LoadNdbSignature(line),
+            ".ndu" => LoadNdbSignature(line, isPua: true),
+            ".ldb" => LoadLdbSignature(line),
+            ".ldu" => LoadLdbSignature(line, isPua: true),
             ".fp" or ".sfp" => LoadFpSignature(line),
             ".ign" or ".ign2" => LoadIgnoreSignature(line),
             ".sha256" => LoadHashSignature(line, HashType.SHA256),
-            ".db" => LoadOldFormatSignature(line),
+            ".db" or ".sdb" => LoadOldFormatSignature(line),
             ".cdb" => LoadCdbSignature(line),
+            ".crb" or ".cat" => LoadCrbSignature(line),
             ".imp" => LoadImportHashSignature(line),
+            ".idb" => LoadHashSignature(line, HashType.MD5),
             _ => 0
         };
     }
 
-    private enum HashType { MD5, SHA1, SHA256 }
+    private enum HashType { MD5, SHA1, SHA256, AutoDetect }
 
-    private int LoadHashSignature(string line, HashType hashType, bool isSectionHash = false)
+    private int LoadHashSignature(ReadOnlySpan<char> line, HashType hashType, bool isSectionHash = false, bool isPua = false)
     {
-        var parts = line.Split(':');
-        if (parts.Length < 2) return 0;
+        int firstColon = line.IndexOf(':');
+        if (firstColon < 0) return 0;
 
-        string hash;
-        string name;
+        ReadOnlySpan<char> part1 = line.Slice(0, firstColon).Trim();
+        ReadOnlySpan<char> rest = line.Slice(firstColon + 1);
 
-        if (isSectionHash && parts.Length >= 3)
+        int secondColon = rest.IndexOf(':');
+        ReadOnlySpan<char> part2;
+        ReadOnlySpan<char> part3 = default;
+
+        if (secondColon < 0)
         {
-            hash = parts[1].Trim();
-            name = Intern(parts[2].Trim());
-        }
-        else if (parts.Length == 2)
-        {
-            hash = parts[0].Trim();
-            name = Intern(parts[1].Trim());
-        }
-        else if (parts.Length == 4)
-        {
-            hash = parts[0].Trim();
-            name = Intern(parts[2].Trim());
+            part2 = rest.Trim();
         }
         else
         {
-            hash = parts[0].Trim();
-            name = Intern(parts[^1].Trim());
+            part2 = rest.Slice(0, secondColon).Trim();
+            part3 = rest.Slice(secondColon + 1).Trim();
         }
 
-        int expectedLen = hashType switch
+        ReadOnlySpan<char> hashSpan;
+        ReadOnlySpan<char> nameSpan;
+        ReadOnlySpan<char> sizeFieldSpan = "*".AsSpan();
+
+        if (isSectionHash)
+        {
+            if (secondColon < 0) return 0;
+            sizeFieldSpan = part1;
+            hashSpan = part2;
+            nameSpan = part3;
+        }
+        else
+        {
+            if (secondColon < 0)
+            {
+                hashSpan = part1;
+                nameSpan = part2;
+            }
+            else
+            {
+                hashSpan = part1;
+                sizeFieldSpan = part2;
+                nameSpan = part3;
+            }
+        }
+
+        if (hashSpan.IsEmpty || nameSpan.IsEmpty)
+            return 0;
+
+        HashType effectiveType = hashType;
+        if (effectiveType == HashType.AutoDetect)
+        {
+            effectiveType = hashSpan.Length switch
+            {
+                32 => HashType.MD5,
+                40 => HashType.SHA1,
+                64 => HashType.SHA256,
+                _ => HashType.MD5
+            };
+        }
+
+        int expectedLen = effectiveType switch
         {
             HashType.MD5 => 32,
             HashType.SHA1 => 40,
@@ -954,61 +1203,98 @@ public class ClamAvEngine
             _ => 0
         };
 
-        if (expectedLen > 0 && hash.Length == expectedLen && !string.IsNullOrEmpty(name))
+        if (hashSpan.Length != expectedLen)
+            return 0;
+
+        string name = Intern(nameSpan);
+
+        if (isPua)
+            _puaSignatureNames.Add(name);
+
+        if (isSectionHash)
         {
-            if (isSectionHash)
-            {
-                if (hashType == HashType.MD5)
-                    _sectionMd5Signatures[Hash128.Parse(hash)] = name;
-                else if (hashType == HashType.SHA256)
-                    _sectionSha256Signatures[Hash256.Parse(hash)] = name;
-            }
-            else
-            {
-                if (hashType == HashType.MD5)
-                    _md5Signatures[Hash128.Parse(hash)] = name;
-                else if (hashType == HashType.SHA256)
-                    _sha256Signatures[Hash256.Parse(hash)] = name;
-                else if (hashType == HashType.SHA1)
-                    _sha1Signatures[Hash160.Parse(hash)] = name;
-            }
+            if (effectiveType == HashType.MD5)
+                _sectionMd5Signatures[Hash128.Parse(hashSpan)] = name;
+            else if (effectiveType == HashType.SHA256)
+                _sectionSha256Signatures[Hash256.Parse(hashSpan)] = name;
+            else if (effectiveType == HashType.SHA1)
+                _sectionSha1Signatures[Hash160.Parse(hashSpan)] = name;
+        }
+        else
+        {
+            long sigSize = ParseSizeField(sizeFieldSpan);
+            if (effectiveType == HashType.MD5)
+                _md5Signatures[Hash128.Parse(hashSpan)] = (name, sigSize);
+            else if (effectiveType == HashType.SHA256)
+                _sha256Signatures[Hash256.Parse(hashSpan)] = (name, sigSize);
+            else if (effectiveType == HashType.SHA1)
+                _sha1Signatures[Hash160.Parse(hashSpan)] = (name, sigSize);
+        }
+        return 1;
+    }
+
+    private static long ParseSizeField(ReadOnlySpan<char> sizeField)
+    {
+        if (sizeField.Equals("*", StringComparison.Ordinal) || !long.TryParse(sizeField, out long sz))
+            return -1;
+        return sz;
+    }
+
+    private int LoadImportHashSignature(ReadOnlySpan<char> line)
+    {
+        int c1 = line.IndexOf(':');
+        if (c1 < 0) return 0;
+        ReadOnlySpan<char> hashSpan = line.Slice(0, c1).Trim();
+        ReadOnlySpan<char> rest1 = line.Slice(c1 + 1);
+
+        int c2 = rest1.IndexOf(':');
+        if (c2 < 0) return 0;
+        ReadOnlySpan<char> sizeSpan = rest1.Slice(0, c2).Trim();
+        ReadOnlySpan<char> nameSpan = rest1.Slice(c2 + 1).Trim();
+
+        int size = -1;
+        if (hashSpan.Length == 32 && (sizeSpan.Equals("*", StringComparison.Ordinal) || int.TryParse(sizeSpan, out size)))
+        {
+            _importHashSignatures[Hash128.Parse(hashSpan)] = (size, Intern(nameSpan));
             return 1;
         }
         return 0;
     }
 
-    private int LoadImportHashSignature(string line)
+    private int LoadNdbSignature(ReadOnlySpan<char> line, bool isPua = false)
     {
-        var parts = line.Split(':');
-        if (parts.Length < 3) return 0;
+        int c1 = line.IndexOf(':');
+        if (c1 < 0) return 0;
+        ReadOnlySpan<char> nameSpan = line.Slice(0, c1).Trim();
+        ReadOnlySpan<char> rest1 = line.Slice(c1 + 1);
 
-        string hashStr = parts[0].Trim();
-        string sizeStr = parts[1].Trim();
-        string name = Intern(parts[2].Trim());
+        int c2 = rest1.IndexOf(':');
+        if (c2 < 0) return 0;
+        ReadOnlySpan<char> targetSpan = rest1.Slice(0, c2).Trim();
+        ReadOnlySpan<char> rest2 = rest1.Slice(c2 + 1);
 
-        if (hashStr.Length == 32 && int.TryParse(sizeStr, out int size))
-        {
-            _importHashSignatures[Hash128.Parse(hashStr)] = (size, name);
-            return 1;
-        }
-        return 0;
-    }
+        int c3 = rest2.IndexOf(':');
+        if (c3 < 0) return 0;
+        ReadOnlySpan<char> offsetSpan = rest2.Slice(0, c3).Trim();
+        ReadOnlySpan<char> rest3 = rest2.Slice(c3 + 1);
 
-    private int LoadNdbSignature(string line)
-    {
-        var parts = line.Split(':');
-        if (parts.Length < 4) return 0;
+        int c4 = rest3.IndexOf(':');
+        ReadOnlySpan<char> hexPatternSpan = c4 < 0 ? rest3.Trim() : rest3.Slice(0, c4).Trim();
 
-        string name = Intern(parts[0].Trim());
+        if (hexPatternSpan.IsEmpty) return 0;
+
+        string name = Intern(nameSpan);
         uint targetType = 0;
-        if (parts.Length > 1 && uint.TryParse(parts[1].Trim(), out var tt))
-            targetType = tt;
+        uint.TryParse(targetSpan, out targetType);
 
-        string offset = parts[2].Trim();
-        string hexPatternStr = parts[3].Trim();
+        string offset = offsetSpan.ToString();
+        string hexPatternStr = hexPatternSpan.ToString();
 
         var parsed = PatternCache.GetOrParse(hexPatternStr);
         if (parsed.Elements.Count == 0) return 0;
+
+        if (isPua)
+            _puaSignatureNames.Add(name);
 
         var offType = ParseOffset(offset, out var offVal, out var maxShift, out var minOff, out var maxOff, out var secIdx);
 
@@ -1034,14 +1320,30 @@ public class ClamAvEngine
         return 1;
     }
 
-    private int LoadLdbSignature(string line)
+    private int LoadLdbSignature(ReadOnlySpan<char> line, bool isPua = false)
     {
-        var parts = line.Split(';');
-        if (parts.Length < 4) return 0;
+        int c1 = line.IndexOf(';');
+        if (c1 < 0) return 0;
+        ReadOnlySpan<char> nameSpan = line.Slice(0, c1).Trim();
+        ReadOnlySpan<char> rest1 = line.Slice(c1 + 1);
 
-        string name = Intern(parts[0].Trim());
-        string targetBlock = parts[1].Trim();
-        string logicalExpr = parts[2].Trim();
+        int c2 = rest1.IndexOf(';');
+        if (c2 < 0) return 0;
+        ReadOnlySpan<char> targetBlockSpan = rest1.Slice(0, c2).Trim();
+        ReadOnlySpan<char> rest2 = rest1.Slice(c2 + 1);
+
+        int c3 = rest2.IndexOf(';');
+        if (c3 < 0) return 0;
+        ReadOnlySpan<char> logicalExprSpan = rest2.Slice(0, c3).Trim();
+        ReadOnlySpan<char> subPatternsSpan = rest2.Slice(c3 + 1);
+
+        string name = Intern(nameSpan);
+
+        if (isPua)
+            _puaSignatureNames.Add(name);
+
+        string targetBlock = targetBlockSpan.ToString();
+        string logicalExpr = logicalExprSpan.ToString();
 
         uint targetType = 0;
         int minEngine = 0;
@@ -1080,27 +1382,77 @@ public class ClamAvEngine
             }
         }
 
-        var subPatterns = new List<ParsedPattern>();
-        for (int i = 3; i < parts.Length; i++)
+        var subPatterns = new List<LdbSubPattern>();
+        ReadOnlySpan<char> remainingSubs = subPatternsSpan;
+        while (!remainingSubs.IsEmpty)
         {
-            string rawPart = parts[i].Trim();
+            int nextSemi = remainingSubs.IndexOf(';');
+            ReadOnlySpan<char> rawPartSpan;
+            if (nextSemi < 0)
+            {
+                rawPartSpan = remainingSubs.Trim();
+                remainingSubs = ReadOnlySpan<char>.Empty;
+            }
+            else
+            {
+                rawPartSpan = remainingSubs.Slice(0, nextSemi).Trim();
+                remainingSubs = remainingSubs.Slice(nextSemi + 1);
+            }
 
-            // Strip subsignature modifiers like ::i, ::w, ::f (not supported yet)
+            if (rawPartSpan.IsEmpty) continue;
+
+            string rawPart = rawPartSpan.ToString();
+
+            // Skip PCRE subsignatures (contain '/') - not supported in C#
+            if (rawPart.Contains('/') && !rawPart.StartsWith("("))
+                continue;
+
+            // Skip ByteCompare subsignatures (contain '#') - not supported
+            if (rawPart.Contains('#'))
+                continue;
+
+            // Skip Macro subsignatures (wrapped in ${...}$) - not supported
+            if (rawPart.StartsWith("$", StringComparison.Ordinal) && rawPart.EndsWith("$", StringComparison.Ordinal))
+                continue;
+
+            // Skip Image Fuzzy Hash subsignatures (fuzzy_img#...) - not supported
+            if (rawPart.StartsWith("fuzzy_img", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Strip subsignature modifiers like ::i, ::w, ::f, ::a (not supported yet)
             int modIdx = rawPart.IndexOf("::", StringComparison.Ordinal);
             if (modIdx >= 0)
                 rawPart = rawPart.Substring(0, modIdx);
 
             string hexPart = rawPart;
-            if (hexPart.Contains(':'))
+            int startOff = -1;
+            bool isEofRel = false;
+            bool isEpRel = false;
+            int secIdx = 0;
+
+            if (rawPart.Contains(':'))
             {
-                var offsetParts = hexPart.Split(':');
-                hexPart = offsetParts[^1].Trim();
+                var colonIdx = rawPart.IndexOf(':');
+                string potentialOffset = rawPart.Substring(0, colonIdx);
+
+                if (ParseLdbOffset(potentialOffset, out startOff, out isEofRel, out isEpRel, out secIdx))
+                {
+                    hexPart = rawPart.Substring(colonIdx + 1).Trim();
+                }
             }
+
             if (hexPart.Length < 4) continue;
 
             var parsed = PatternCache.GetOrParse(hexPart);
             if (parsed.Elements.Count > 0)
-                subPatterns.Add(parsed);
+                subPatterns.Add(new LdbSubPattern
+                {
+                    StartOffset = startOff,
+                    IsEofRelative = isEofRel,
+                    IsEpRelative = isEpRel,
+                    SectionIndex = secIdx,
+                    Pattern = parsed
+                });
         }
 
         if (subPatterns.Count == 0) return 0;
@@ -1120,9 +1472,10 @@ public class ClamAvEngine
         return 1;
     }
 
-    private int LoadCdbSignature(string line)
+    private int LoadCdbSignature(ReadOnlySpan<char> line)
     {
-        var parts = line.Split(':');
+        string lineStr = line.ToString();
+        var parts = lineStr.Split(':');
         if (parts.Length < 10) return 0;
 
         var sig = new CdbSignature
@@ -1146,41 +1499,98 @@ public class ClamAvEngine
         return 1;
     }
 
-    private int LoadFpSignature(string line)
+    private int LoadCrbSignature(ReadOnlySpan<char> line)
     {
-        var parts = line.Split(':');
-        if (parts.Length < 1) return 0;
-
-        string hash = parts[0].Trim();
-        if (hash.Length == 32 || hash.Length == 40 || hash.Length == 64)
-        {
-            _fpHashes.Add(hash);
-            return 1;
-        }
-        return 0;
-    }
-
-    private int LoadIgnoreSignature(string line)
-    {
-        var parts = line.Split(':');
-        if (parts.Length < 1) return 0;
-
-        string sigName = parts[0].Trim();
-        if (!string.IsNullOrEmpty(sigName))
-        {
-            _ignoredSigs.Add(sigName);
-            return 1;
-        }
-        return 0;
-    }
-
-    private int LoadOldFormatSignature(string line)
-    {
-        var parts = line.Split('=');
-        if (parts.Length < 2) return 0;
+        string lineStr = line.ToString();
+        var parts = lineStr.Split(';');
+        if (parts.Length < 11) return 0;
 
         string name = Intern(parts[0].Trim());
-        string hexPatternStr = parts[1].Trim();
+        bool trusted = parts[1].Trim() == "1";
+        string subject = parts[2].Trim().ToLowerInvariant();
+        string serial = parts[3].Trim().ToLowerInvariant();
+        string pubkey = parts[4].Trim().ToLowerInvariant();
+        string exponent = parts[5].Trim().ToLowerInvariant();
+        bool codeSign = parts[6].Trim() == "1";
+        bool timeSign = parts[7].Trim() == "1";
+        bool certSign = parts[8].Trim() == "1";
+        long.TryParse(parts[9].Trim(), out long notBefore);
+        string comment = parts[10].Trim();
+
+        var sig = new CrbSignature
+        {
+            Name = name,
+            Trusted = trusted,
+            Subject = subject,
+            Serial = serial,
+            Pubkey = pubkey,
+            Exponent = exponent,
+            CodeSign = codeSign,
+            TimeSign = timeSign,
+            CertSign = certSign,
+            NotBefore = notBefore,
+            Comment = comment
+        };
+
+        lock (_crbSignatures)
+        {
+            _crbSignatures.Add(sig);
+        }
+        return 1;
+    }
+
+    private int LoadFpSignature(ReadOnlySpan<char> line)
+    {
+        int colonIdx = line.IndexOf(':');
+        ReadOnlySpan<char> hashSpan;
+        ReadOnlySpan<char> sizeSpan = default;
+
+        if (colonIdx < 0)
+        {
+            hashSpan = line.Trim();
+        }
+        else
+        {
+            hashSpan = line.Slice(0, colonIdx).Trim();
+            sizeSpan = line.Slice(colonIdx + 1).Trim();
+        }
+
+        if (hashSpan.Length == 32 || hashSpan.Length == 40 || hashSpan.Length == 64)
+        {
+            long size = -1;
+            if (!sizeSpan.IsEmpty && !sizeSpan.Equals("*", StringComparison.Ordinal))
+            {
+                long.TryParse(sizeSpan, out size);
+            }
+            string hash = hashSpan.ToString();
+            _fpHashes[hash] = size;
+            return 1;
+        }
+        return 0;
+    }
+
+    private int LoadIgnoreSignature(ReadOnlySpan<char> line)
+    {
+        int colonIdx = line.IndexOf(':');
+        ReadOnlySpan<char> sigNameSpan = colonIdx < 0 ? line.Trim() : line.Slice(0, colonIdx).Trim();
+        if (!sigNameSpan.IsEmpty)
+        {
+            _ignoredSigs.Add(sigNameSpan.ToString());
+            return 1;
+        }
+        return 0;
+    }
+
+    private int LoadOldFormatSignature(ReadOnlySpan<char> line)
+    {
+        int eqIdx = line.IndexOf('=');
+        if (eqIdx < 0) return 0;
+
+        ReadOnlySpan<char> nameSpan = line.Slice(0, eqIdx).Trim();
+        ReadOnlySpan<char> hexPatternSpan = line.Slice(eqIdx + 1).Trim();
+
+        string name = Intern(nameSpan);
+        string hexPatternStr = hexPatternSpan.ToString();
 
         var parsed = PatternCache.GetOrParse(hexPatternStr);
         if (parsed.Elements.Count == 0 || parsed.PrefixBytes == null) return 0;
@@ -1212,7 +1622,7 @@ public class ClamAvEngine
         if (offsetStr.StartsWith("EP+"))
         {
             var rest = offsetStr.AsSpan(3);
-            var colonIdx = rest.IndexOf(':');
+            var colonIdx = rest.IndexOf(',');
             if (colonIdx >= 0)
             {
                 int.TryParse(rest[..colonIdx], out offsetValue);
@@ -1260,6 +1670,16 @@ public class ClamAvEngine
                     return NdbOffsetType.SectionIndex;
                 }
             }
+            
+            if (offsetStr.Length > 3 && offsetStr[1] == 'E' && offsetStr[2] >= '0' && offsetStr[2] <= '9')
+            {
+                if (int.TryParse(offsetStr.AsSpan(2), out var secIdx))
+                {
+                    offsetValue = 0;
+                    sectionIndex = secIdx;
+                    return NdbOffsetType.SectionIndex;
+                }
+            }
         }
 
         if (offsetStr.StartsWith("SL+") && int.TryParse(offsetStr.AsSpan(3), out offsetValue))
@@ -1292,6 +1712,97 @@ public class ClamAvEngine
         }
 
         return NdbOffsetType.Any;
+    }
+
+    private static bool IsValidOffsetFormat(string offsetStr)
+    {
+        if (string.IsNullOrEmpty(offsetStr)) return false;
+        
+        if (offsetStr == "*" || offsetStr.Equals("VI", StringComparison.OrdinalIgnoreCase))
+            return true;
+        
+        if (offsetStr.StartsWith("EP+") || offsetStr.StartsWith("EP-") ||
+            offsetStr.StartsWith("EOF+") || offsetStr.StartsWith("EOF-") ||
+            offsetStr.StartsWith("SL+"))
+            return true;
+        
+        if (offsetStr.StartsWith("S"))
+        {
+            if (offsetStr.Length > 2 && (offsetStr[1] == 'E' || (offsetStr[1] >= '0' && offsetStr[1] <= '9')))
+                return true;
+        }
+        
+        if (offsetStr.Contains(","))
+        {
+            var parts = offsetStr.Split(',');
+            if (parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))
+                return true;
+        }
+        
+        return int.TryParse(offsetStr, out _);
+    }
+
+    private static bool ParseLdbOffset(string offsetStr, out int offset, out bool isEofRel, out bool isEpRel, out int secIdx)
+    {
+        offset = -1;
+        isEofRel = false;
+        isEpRel = false;
+        secIdx = 0;
+
+        if (string.IsNullOrEmpty(offsetStr) || offsetStr == "*")
+            return true; // any offset
+
+        if (offsetStr.StartsWith("EOF-"))
+        {
+            if (int.TryParse(offsetStr.AsSpan(4), out int eofOff))
+            {
+                offset = -eofOff;
+                isEofRel = true;
+                return true;
+            }
+            return false;
+        }
+
+        if (offsetStr.StartsWith("EP+"))
+        {
+            if (int.TryParse(offsetStr.AsSpan(3), out int epOff))
+            {
+                offset = epOff;
+                isEpRel = true;
+                return true;
+            }
+            return false;
+        }
+
+        if (offsetStr.StartsWith("EP-"))
+        {
+            if (int.TryParse(offsetStr.AsSpan(3), out int epOff))
+            {
+                offset = -epOff;
+                isEpRel = true;
+                return true;
+            }
+            return false;
+        }
+
+        if (offsetStr.StartsWith("SE") && offsetStr.Length > 2)
+        {
+            if (int.TryParse(offsetStr.AsSpan(2), out int si) && si > 0)
+            {
+                offset = 0;
+                secIdx = si;
+                return true;
+            }
+            return false;
+        }
+
+        if (int.TryParse(offsetStr, out int absOff))
+        {
+            offset = absOff;
+            return true;
+        }
+
+        return false;
     }
 
     private void AddStoredPattern(StoredPattern sp)
@@ -1479,36 +1990,55 @@ public class ClamAvEngine
         {
             string md5Hash, sha256Hash, sha1Hash;
             byte[] fileBytes;
+            long fileSize;
 
             using (var stream = File.OpenRead(filePath))
             {
-                long scanLen = Math.Min(stream.Length, options.MaxFileSize);
+                fileSize = stream.Length;
+                long scanLen = Math.Min(fileSize, options.MaxFileSize);
                 fileBytes = new byte[scanLen];
                 stream.ReadExactly(fileBytes, 0, (int)scanLen);
 
-                stream.Position = 0;
-                using var md5 = MD5.Create();
-                using var sha256 = SHA256.Create();
-                using var sha1 = SHA1.Create();
+                using var incMd5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
+                using var incSha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                using var incSha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
 
-                byte[] md5HashBytes = md5.ComputeHash(stream);
-                md5Hash = ConvertToHexString(md5HashBytes);
+                incMd5.AppendData(fileBytes);
+                incSha256.AppendData(fileBytes);
+                incSha1.AppendData(fileBytes);
 
-                stream.Position = 0;
-                byte[] sha256HashBytes = sha256.ComputeHash(stream);
-                sha256Hash = ConvertToHexString(sha256HashBytes);
+                if (fileSize > scanLen)
+                {
+                    byte[] buf = new byte[65536];
+                    int read;
+                    while ((read = stream.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        incMd5.AppendData(buf, 0, read);
+                        incSha256.AppendData(buf, 0, read);
+                        incSha1.AppendData(buf, 0, read);
+                    }
+                }
 
-                stream.Position = 0;
-                byte[] sha1HashBytes = sha1.ComputeHash(stream);
-                sha1Hash = ConvertToHexString(sha1HashBytes);
+                md5Hash = ConvertToHexString(incMd5.GetHashAndReset());
+                sha256Hash = ConvertToHexString(incSha256.GetHashAndReset());
+                sha1Hash = ConvertToHexString(incSha1.GetHashAndReset());
             }
 
             if (threats.Count > 0 && !options.AllMatchMode) return;
 
-            if (IsFalsePositive(md5Hash, sha256Hash, sha1Hash))
+            if (IsFalsePositive(md5Hash, sha256Hash, sha1Hash, fileSize))
                 return;
 
-            CheckHashSignatures(threats, filePath, md5Hash, sha256Hash, sha1Hash, options);
+            if (fileType == ClamFileType.MSEXE && _crbSignatures.Count > 0)
+            {
+                bool isTrusted = CheckAuthenticodeSignature(filePath, threats, options);
+                if (isTrusted)
+                    return;
+                if (threats.Count > 0 && !options.AllMatchMode)
+                    return;
+            }
+
+            CheckHashSignatures(threats, filePath, md5Hash, sha256Hash, sha1Hash, fileSize, options);
             if (threats.Count > 0 && !options.AllMatchMode) return;
 
             if (options.ParsePe && fileType == ClamFileType.MSEXE)
@@ -1520,7 +2050,7 @@ public class ClamAvEngine
             var acMatches = _acEngine.Search(fileBytes);
             foreach (var match in acMatches)
             {
-                if (!IsIgnored(match) && !threats.Exists(t => t.ThreatName == match))
+                if (!IsIgnored(match) && !threats.Exists(t => t.ThreatName == match) && !ShouldSkipPua(match, options))
                 {
                     threats.Add(new ThreatDetail
                     {
@@ -1561,6 +2091,7 @@ public class ClamAvEngine
             {
                 if (threats.Count > 0 && !options.AllMatchMode) return;
                 if (IsIgnored(ldb.Name)) continue;
+                if (ShouldSkipPua(ldb.Name, options)) continue;
                 if (threats.Exists(t => t.ThreatName == ldb.Name)) continue;
                 if (ldb.TargetType != 0 && ldb.TargetType != (uint)fileTargetType) continue;
 
@@ -1672,13 +2203,67 @@ public class ClamAvEngine
                     maxStart = epBase;
                 break;
 
+            case NdbOffsetType.SectionIndex:
+                {
+                    var peInfo = PeParser.Parse(fileBytes);
+                    if (!peInfo.IsValid || peInfo.Sections.Length == 0)
+                        return false;
+                    // ClamAV section indices are 1-based
+                    int idx = sp.SectionIndex - 1;
+                    if (idx < 0 || idx >= peInfo.Sections.Length)
+                        return false;
+                    int secBase = (int)peInfo.Sections[idx].RawOffset + sp.OffsetValue;
+                    if (secBase < 0 || secBase >= fileBytes.Length)
+                        return false;
+                    minStart = secBase;
+                    if (sp.MaxShift > 0)
+                        maxStart = Math.Min(secBase + sp.MaxShift, fileBytes.Length - 1);
+                    else
+                        maxStart = secBase;
+                }
+                break;
+
+            case NdbOffsetType.SectionLast:
+                {
+                    var peInfo = PeParser.Parse(fileBytes);
+                    if (!peInfo.IsValid || peInfo.Sections.Length == 0)
+                        return false;
+                    int lastSecBase = (int)peInfo.Sections[^1].RawOffset + sp.OffsetValue;
+                    if (lastSecBase < 0 || lastSecBase >= fileBytes.Length)
+                        return false;
+                    minStart = lastSecBase;
+                    if (sp.MaxShift > 0)
+                        maxStart = Math.Min(lastSecBase + sp.MaxShift, fileBytes.Length - 1);
+                    else
+                        maxStart = lastSecBase;
+                }
+                break;
+
+            case NdbOffsetType.VirtualImage:
+                {
+                    var peInfo = PeParser.Parse(fileBytes);
+                    if (!peInfo.IsValid || peInfo.Sections.Length == 0)
+                        return false;
+                    uint rva = (uint)sp.OffsetValue;
+                    uint rawOffset = PeParser.RvaToOffset(rva, peInfo.Sections);
+                    if (rawOffset == 0)
+                        return false;
+                    int viBase = (int)rawOffset;
+                    minStart = viBase;
+                    if (sp.MaxShift > 0)
+                        maxStart = Math.Min(viBase + sp.MaxShift, fileBytes.Length - 1);
+                    else
+                        maxStart = viBase;
+                }
+                break;
+
             default:
                 return false;
         }
 
         if (minStart > maxStart || minStart >= fileBytes.Length) return false;
 
-        if (isStaticOnly && sp.Parsed.PrefixBytes != null)
+        if (sp.Parsed.PrefixBytes != null)
         {
             byte[] pat = sp.Parsed.PrefixBytes;
             if (minStart == maxStart)
@@ -1686,29 +2271,38 @@ public class ClamAvEngine
                 if (minStart + pat.Length > fileBytes.Length) return false;
                 for (int j = 0; j < pat.Length; j++)
                     if (fileBytes[minStart + j] != pat[j]) return false;
-                return true;
+                if (isStaticOnly) return true;
+                return PatternCache.MatchData(fileBytes, minStart, sp.Parsed);
             }
             else
             {
-                int searchEnd = Math.Min(maxStart + pat.Length, fileBytes.Length);
-                for (int i = minStart; i <= searchEnd - pat.Length; i++)
+                int currentStart = minStart;
+                while (true)
                 {
-                    bool found = true;
-                    for (int j = 0; j < pat.Length; j++)
-                    {
-                        if (fileBytes[i + j] != pat[j])
-                        {
-                            found = false;
-                            break;
-                        }
-                    }
-                    if (found) return true;
+                    int searchLen = Math.Min(maxStart - currentStart + pat.Length, fileBytes.Length - currentStart);
+                    if (searchLen < pat.Length)
+                        break;
+
+                    int idx = fileBytes.AsSpan(currentStart, searchLen).IndexOf(pat);
+                    if (idx < 0)
+                        break;
+
+                    int matchPos = currentStart + idx;
+                    if (isStaticOnly) return true;
+
+                    if (PatternCache.MatchData(fileBytes, matchPos, sp.Parsed))
+                        return true;
+
+                    currentStart = matchPos + 1;
+                    if (currentStart > maxStart)
+                        break;
                 }
                 return false;
             }
         }
         else
         {
+            if (isStaticOnly) return false;
             for (int i = minStart; i <= maxStart; i++)
             {
                 if (PatternCache.MatchData(fileBytes, i, sp.Parsed))
@@ -1764,6 +2358,8 @@ public class ClamAvEngine
                 ClamFileType.OLD_TAR or ClamFileType.POSIX_TAR => 5,
                 ClamFileType.MSCAB or ClamFileType.CABSFX => 6,
                 ClamFileType.MAIL => 7,
+                ClamFileType.XZ => 8,
+                ClamFileType.ARJ => 9,
                 ClamFileType.S7Z or ClamFileType.S7ZSFX => 13,
                 _ => -1
             };
@@ -1838,17 +2434,18 @@ public class ClamAvEngine
         string md5Hash,
         string sha256Hash,
         string sha1Hash,
+        long fileSize,
         ScanOptions options)
     {
-        if (_md5Signatures.TryGetValue(Hash128.Parse(md5Hash), out string? md5Name))
+        if (_md5Signatures.TryGetValue(Hash128.Parse(md5Hash), out var md5Entry))
         {
-            if (!IsIgnored(md5Name))
+            if ((md5Entry.Size < 0 || md5Entry.Size == fileSize) && !IsIgnored(md5Entry.Name) && !ShouldSkipPua(md5Entry.Name, options))
             {
                 threats.Add(new ThreatDetail
                 {
                     FilePath = filePath,
-                    ThreatName = md5Name,
-                    Severity = DetermineSeverity(md5Name),
+                    ThreatName = md5Entry.Name,
+                    Severity = DetermineSeverity(md5Entry.Name),
                     HashType = "MD5",
                     FileHash = md5Hash
                 });
@@ -1856,15 +2453,15 @@ public class ClamAvEngine
             }
         }
 
-        if (_sha256Signatures.TryGetValue(Hash256.Parse(sha256Hash), out string? sha256Name))
+        if (_sha256Signatures.TryGetValue(Hash256.Parse(sha256Hash), out var sha256Entry))
         {
-            if (!IsIgnored(sha256Name))
+            if ((sha256Entry.Size < 0 || sha256Entry.Size == fileSize) && !IsIgnored(sha256Entry.Name) && !ShouldSkipPua(sha256Entry.Name, options))
             {
                 threats.Add(new ThreatDetail
                 {
                     FilePath = filePath,
-                    ThreatName = sha256Name,
-                    Severity = DetermineSeverity(sha256Name),
+                    ThreatName = sha256Entry.Name,
+                    Severity = DetermineSeverity(sha256Entry.Name),
                     HashType = "SHA256",
                     FileHash = sha256Hash
                 });
@@ -1872,15 +2469,15 @@ public class ClamAvEngine
             }
         }
 
-        if (_sha1Signatures.TryGetValue(Hash160.Parse(sha1Hash), out string? sha1Name))
+        if (_sha1Signatures.TryGetValue(Hash160.Parse(sha1Hash), out var sha1Entry))
         {
-            if (!IsIgnored(sha1Name))
+            if ((sha1Entry.Size < 0 || sha1Entry.Size == fileSize) && !IsIgnored(sha1Entry.Name) && !ShouldSkipPua(sha1Entry.Name, options))
             {
                 threats.Add(new ThreatDetail
                 {
                     FilePath = filePath,
-                    ThreatName = sha1Name,
-                    Severity = DetermineSeverity(sha1Name),
+                    ThreatName = sha1Entry.Name,
+                    Severity = DetermineSeverity(sha1Entry.Name),
                     HashType = "SHA1",
                     FileHash = sha1Hash
                 });
@@ -1900,7 +2497,7 @@ public class ClamAvEngine
             {
                 if (section.RawSize == 0) continue;
 
-                if (_sectionMd5Signatures.TryGetValue(Hash128.Parse(section.Md5Hash), out string? md5Name) && !IsIgnored(md5Name))
+                if (_sectionMd5Signatures.TryGetValue(Hash128.Parse(section.Md5Hash), out string? md5Name) && !IsIgnored(md5Name) && !ShouldSkipPua(md5Name, options))
                 {
                     if (!threats.Exists(t => t.ThreatName == md5Name))
                     {
@@ -1916,7 +2513,7 @@ public class ClamAvEngine
                     }
                 }
 
-                if (_sectionSha256Signatures.TryGetValue(Hash256.Parse(section.Sha256Hash), out string? sha256Name) && !IsIgnored(sha256Name))
+                if (_sectionSha256Signatures.TryGetValue(Hash256.Parse(section.Sha256Hash), out string? sha256Name) && !IsIgnored(sha256Name) && !ShouldSkipPua(sha256Name, options))
                 {
                     if (!threats.Exists(t => t.ThreatName == sha256Name))
                     {
@@ -1926,6 +2523,22 @@ public class ClamAvEngine
                             ThreatName = sha256Name,
                             Severity = DetermineSeverity(sha256Name),
                             HashType = "SHA256",
+                            MatchType = $"PE Section ({section.Name})"
+                        });
+                        if (!options.AllMatchMode) return;
+                    }
+                }
+
+                if (_sectionSha1Signatures.TryGetValue(Hash160.Parse(section.Sha1Hash), out string? sha1Name) && !IsIgnored(sha1Name) && !ShouldSkipPua(sha1Name, options))
+                {
+                    if (!threats.Exists(t => t.ThreatName == sha1Name))
+                    {
+                        threats.Add(new ThreatDetail
+                        {
+                            FilePath = filePath,
+                            ThreatName = sha1Name,
+                            Severity = DetermineSeverity(sha1Name),
+                            HashType = "SHA1",
                             MatchType = $"PE Section ({section.Name})"
                         });
                         if (!options.AllMatchMode) return;
@@ -2295,9 +2908,65 @@ public class ClamAvEngine
         }
     }
 
+    private bool CheckAuthenticodeSignature(string filePath, List<ThreatDetail> threats, ScanOptions options)
+    {
+        try
+        {
+#pragma warning disable SYSLIB0057
+            using var cert = new X509Certificate2(filePath);
+#pragma warning restore SYSLIB0057
+            
+            byte[] subjectDer = cert.SubjectName.RawData;
+            using var sha1 = SHA1.Create();
+            string subjectSha1 = BitConverter.ToString(sha1.ComputeHash(subjectDer)).Replace("-", "").ToLowerInvariant();
+
+            string serial = cert.SerialNumber.ToLowerInvariant();
+
+            byte[] pubKeyBytes = cert.PublicKey.EncodedKeyValue.RawData;
+            string pubkey = BitConverter.ToString(pubKeyBytes).Replace("-", "").ToLowerInvariant();
+
+            lock (_crbSignatures)
+            {
+                foreach (var sig in _crbSignatures)
+                {
+                    bool subjectMatch = string.IsNullOrEmpty(sig.Subject) || sig.Subject == "*" || sig.Subject == subjectSha1;
+                    bool serialMatch = string.IsNullOrEmpty(sig.Serial) || sig.Serial == "*" || sig.Serial == serial;
+                    bool pubkeyMatch = string.IsNullOrEmpty(sig.Pubkey) || sig.Pubkey == "*" || pubkey.Contains(sig.Pubkey);
+
+                    if (subjectMatch && serialMatch && pubkeyMatch)
+                    {
+                        if (sig.Trusted)
+                        {
+                            return true; // Trusted -> Whitelisted
+                        }
+                        else
+                        {
+                            if (!threats.Exists(t => t.ThreatName == sig.Name))
+                            {
+                                threats.Add(new ThreatDetail
+                                {
+                                    FilePath = filePath,
+                                    ThreatName = sig.Name,
+                                    Severity = "Critical",
+                                    MatchType = $"Authenticode Revoked Certificate ({sig.Comment})"
+                                });
+                            }
+                            return false; // Revoked -> Threat added
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+        return false;
+    }
+
     private void AddStoredPatternThreat(List<ThreatDetail> threats, string filePath, StoredPattern pattern, ScanOptions options)
     {
         if (IsIgnored(pattern.Name)) return;
+        if (ShouldSkipPua(pattern.Name, options)) return;
         if (threats.Exists(t => t.ThreatName == pattern.Name)) return;
 
         threats.Add(new ThreatDetail
@@ -2309,16 +2978,28 @@ public class ClamAvEngine
         });
     }
 
-    private bool IsFalsePositive(string md5, string sha256, string sha1)
+    private bool IsFalsePositive(string md5, string sha256, string sha1, long fileSize = -1)
     {
-        return _fpHashes.Contains(md5) ||
-               _fpHashes.Contains(sha256) ||
-               _fpHashes.Contains(sha1);
+        if (CheckFpHash(md5, fileSize) || CheckFpHash(sha256, fileSize) || CheckFpHash(sha1, fileSize))
+            return true;
+        return false;
+    }
+
+    private bool CheckFpHash(string hash, long fileSize)
+    {
+        if (_fpHashes.TryGetValue(hash, out long expectedSize))
+            return expectedSize < 0 || expectedSize == fileSize;
+        return false;
     }
 
     private bool IsIgnored(string sigName)
     {
         return _ignoredSigs.Contains(sigName);
+    }
+
+    private bool ShouldSkipPua(string sigName, ScanOptions options)
+    {
+        return !options.AlertPua && _puaSignatureNames.Contains(sigName);
     }
 
     private static string DetermineSeverity(string threatName)

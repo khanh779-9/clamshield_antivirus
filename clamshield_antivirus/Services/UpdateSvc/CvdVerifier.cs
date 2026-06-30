@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 
-namespace clamshield_antivirus.Services;
+namespace clamshield_antivirus.Services.UpdateSvc;
 
 public static class CvdVerifier
 {

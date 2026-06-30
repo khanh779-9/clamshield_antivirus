@@ -4,7 +4,7 @@ using System.IO.Compression;
 using System.Collections.Generic;
 using clamshield_antivirus.Models;
 
-namespace clamshield_antivirus.Services;
+namespace clamshield_antivirus.Services.ScanSvc;
 
 public class ArchiveEntry
 {

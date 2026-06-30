@@ -8,14 +8,27 @@ namespace clamshield_antivirus.ViewModels;
 
 public class NavigationItem : ViewModelBase
 {
-    public string Title { get; set; } = string.Empty;
-    public string Icon { get; set; } = string.Empty;
+    private string _title = string.Empty;
+    private string _icon = string.Empty;
+
+    public string Title
+    {
+        get => _title;
+        set => SetProperty(ref _title, value);
+    }
+
+    public string Icon
+    {
+        get => _icon;
+        set => SetProperty(ref _icon, value);
+    }
+
     public ViewModelBase ViewModel { get; set; }
 
     public NavigationItem(string title, string icon, ViewModelBase viewModel)
     {
-        Title = title;
-        Icon = icon;
+        _title = title;
+        _icon = icon;
         ViewModel = viewModel;
     }
 }
@@ -72,8 +85,21 @@ public class MainViewModel : ViewModelBase
         var settingsVm = new SettingsViewModel();
         NavigationItems.Add(new NavigationItem("Settings", "⚡", settingsVm));
 
+        var aboutVm = new AboutViewModel();
+        NavigationItems.Add(new NavigationItem("About", "ℹ️", aboutVm));
+
         // Mặc định chọn Scan
         SelectedNavigationItem = NavigationItems[0];
+
+        // Listen for language changes and apply dynamically
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                UpdateLanguage();
+            }
+        };
+        UpdateLanguage();
 
         NavigateCommand = new RelayCommand(param =>
         {
@@ -81,7 +107,8 @@ public class MainViewModel : ViewModelBase
             {
                 foreach (var item in NavigationItems)
                 {
-                    if (item.Title.Equals(target, StringComparison.OrdinalIgnoreCase))
+                    if (item.ViewModel.GetType().Name.Replace("ViewModel", "").Equals(target, StringComparison.OrdinalIgnoreCase) ||
+                        item.Title.Equals(target, StringComparison.OrdinalIgnoreCase))
                     {
                         SelectedNavigationItem = item;
                         break;
@@ -91,11 +118,44 @@ public class MainViewModel : ViewModelBase
         });
     }
 
+    private void UpdateLanguage()
+    {
+        var scanItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ScanViewModel);
+        if (scanItem != null) scanItem.Title = LocalizationService.Instance["MainWindow.Scan"];
+
+        var protectorItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ProtectorViewModel);
+        if (protectorItem != null) protectorItem.Title = LocalizationService.Instance["MainWindow.Protector"];
+
+        var dbItem = NavigationItems.FirstOrDefault(i => i.ViewModel is DatabaseViewModel);
+        if (dbItem != null) dbItem.Title = LocalizationService.Instance["MainWindow.Database"];
+
+        var logsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is LogsViewModel);
+        if (logsItem != null) logsItem.Title = LocalizationService.Instance["MainWindow.Logs"];
+
+        var compItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ComponentsViewModel);
+        if (compItem != null) compItem.Title = LocalizationService.Instance["MainWindow.Components"];
+
+        var quarItem = NavigationItems.FirstOrDefault(i => i.ViewModel is QuarantineViewModel);
+        if (quarItem != null) quarItem.Title = LocalizationService.Instance["MainWindow.Quarantine"];
+
+        var statsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is StatisticsViewModel);
+        if (statsItem != null) statsItem.Title = LocalizationService.Instance["MainWindow.Statistics"];
+
+        var auditItem = NavigationItems.FirstOrDefault(i => i.ViewModel is AuditViewModel);
+        if (auditItem != null) auditItem.Title = LocalizationService.Instance["MainWindow.Audit"];
+
+        var settingsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is SettingsViewModel);
+        if (settingsItem != null) settingsItem.Title = LocalizationService.Instance["MainWindow.Settings"];
+
+        var aboutItem = NavigationItems.FirstOrDefault(i => i.ViewModel is AboutViewModel);
+        if (aboutItem != null) aboutItem.Title = LocalizationService.Instance["MainWindow.About"];
+    }
+
     public void HandleScanRequest(string path)
     {
         if (string.IsNullOrEmpty(path)) return;
 
-        var scanItem = NavigationItems.FirstOrDefault(item => item.Title.Equals("Scan", StringComparison.OrdinalIgnoreCase));
+        var scanItem = NavigationItems.FirstOrDefault(item => item.ViewModel is ScanViewModel);
         if (scanItem != null)
         {
             SelectedNavigationItem = scanItem;

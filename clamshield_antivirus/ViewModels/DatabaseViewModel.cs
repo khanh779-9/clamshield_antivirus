@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Models;
 using clamshield_antivirus.Services;
+using clamshield_antivirus.Services.UpdateSvc;
 
 namespace clamshield_antivirus.ViewModels;
 

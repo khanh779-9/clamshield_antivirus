@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using clamshield_antivirus.Models;
+using clamshield_antivirus.Services.UpdateSvc;
 
 namespace clamshield_antivirus.Services;
 

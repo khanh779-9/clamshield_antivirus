@@ -5,9 +5,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Linq;
 using clamshield_antivirus.Models;
 
-namespace clamshield_antivirus.Services;
+using clamshield_antivirus.Services;
+using clamshield_antivirus.Services.UpdateSvc;
+
+namespace clamshield_antivirus.Services.ScanSvc;
 
 public class ClamAvService
 {
@@ -57,6 +61,7 @@ public class ClamAvService
             AlertPdf = _settingsService.Get("AlertPdf", false),
             AlertMacros = _settingsService.Get("AlertMacros", false),
             AlertSwf = _settingsService.Get("AlertSwf", false),
+            AlertPua = _settingsService.Get("AlertPua", false),
             ParseArchives = _settingsService.Get("ParseArchives", true),
             ParsePe = _settingsService.Get("ParsePe", true),
             ParsePdf = _settingsService.Get("ParsePdf", true),
@@ -385,12 +390,23 @@ public class ClamAvService
                         }
 
                         var files = CvdReader.ExtractCvd(cvdFile);
-                        foreach (var file in files)
+                        var sortedFiles = files.OrderBy(f =>
+                        {
+                            string e = Path.GetExtension(f.FileName).ToLowerInvariant();
+                            if (e == ".fp" || e == ".sfp") return 0;
+                            if (e == ".crb" || e == ".cat") return 1;
+                            if (e == ".ign" || e == ".ign2") return 2;
+                            return 3;
+                        }).ToList();
+
+                        foreach (var file in sortedFiles)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            string content = System.Text.Encoding.ASCII.GetString(file.Content);
-                            int loaded = App.Engine.LoadSignaturesFromContent(file.FileName, content);
-                            Debug.WriteLine($"CVD {Path.GetFileName(cvdFile)} -> {file.FileName}: loaded {loaded} signatures");
+                            using (var ms = new MemoryStream(file.Content))
+                            {
+                                int loaded = App.Engine.LoadSignaturesFromStream(file.FileName, ms);
+                                Debug.WriteLine($"CVD {Path.GetFileName(cvdFile)} -> {file.FileName}: loaded {loaded} signatures");
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -399,9 +415,15 @@ public class ClamAvService
                     }
                 }
 
-                var supportedExtensions = new[] { "*.hdb", "*.hdu", "*.hsb", "*.hsu", "*.ndb", "*.ndu",
-                    "*.ldb", "*.ldu", "*.mdb", "*.mdu", "*.msb", "*.msu", "*.sha256",
-                    "*.fp", "*.sfp", "*.ign", "*.ign2", "*.db", "*.sdb", "*.cdb" };
+                var supportedExtensions = new[] { 
+                    "*.fp", "*.sfp", 
+                    "*.crb", "*.cat",
+                    "*.ign", "*.ign2", 
+                    "*.hdb", "*.hdu", "*.hsb", "*.hsu", 
+                    "*.ndb", "*.ndu", "*.ldb", "*.ldu", 
+                    "*.mdb", "*.mdu", "*.msb", "*.msu", 
+                    "*.sha256", "*.db", "*.sdb", "*.cdb", "*.idb" 
+                };
 
                 foreach (var ext in supportedExtensions)
                 {
@@ -412,13 +434,16 @@ public class ClamAvService
                         cancellationToken.ThrowIfCancellationRequested();
                         try
                         {
-                            string content = File.ReadAllText(sigFile);
-                            int loaded = App.Engine.LoadSignaturesFromContent(Path.GetFileName(sigFile), content);
-                            Debug.WriteLine($"Loaded {loaded} signatures from {Path.GetFileName(sigFile)}");
+                            using (var fs = File.OpenRead(sigFile))
+                            {
+                                int loaded = App.Engine.LoadSignaturesFromStream(Path.GetFileName(sigFile), fs);
+                                Debug.WriteLine($"Loaded {loaded} signatures from {Path.GetFileName(sigFile)}");
+                            }
                         }
                         catch { }
                     }
                 }
+
                 cancellationToken.ThrowIfCancellationRequested();
                 App.Engine.Compile();
                 _signaturesLoaded = true;

@@ -4,7 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Collections.Generic;
 
-namespace clamshield_antivirus.Services;
+namespace clamshield_antivirus.Services.UpdateSvc;
 
 public class CvdInfo
 {
@@ -263,10 +263,24 @@ public class CvdReader
             if (!File.Exists(infoFilePath)) return null;
             using var reader = new StreamReader(infoFilePath);
             string? firstLine = reader.ReadLine();
-            if (firstLine == null || !firstLine.StartsWith("ClamAV-VDB:", StringComparison.OrdinalIgnoreCase))
-                return null;
+            if (firstLine == null) return null;
 
-            return ParseCvdHeader(firstLine);
+            // Tries ClamAV-VDB header format first
+            if (firstLine.StartsWith("ClamAV-VDB:", StringComparison.OrdinalIgnoreCase))
+                return ParseCvdHeader(firstLine);
+
+            // Fallback: name:size:sha256 format (modern ClamAV .info files)
+            var parts = firstLine.Split(':');
+            if (parts.Length >= 3 && !string.IsNullOrEmpty(parts[0]))
+            {
+                return new CvdInfo
+                {
+                    DatabaseName = parts[0].Trim(),
+                    Md5Signature = parts[^1].Trim()
+                };
+            }
+
+            return null;
         }
         catch
         {

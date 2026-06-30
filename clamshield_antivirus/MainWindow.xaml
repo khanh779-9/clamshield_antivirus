@@ -6,8 +6,9 @@
         xmlns:local="clr-namespace:clamshield_antivirus"
         xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
         xmlns:views="clr-namespace:clamshield_antivirus.Views"
+        xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
         mc:Ignorable="d"
-        Title="ClamUI" Height="700" Width="1020"
+        Title="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MainWindow.Title]}" Height="700" Width="1020"
         MinWidth="820" MinHeight="580"
         Style="{StaticResource DarkWindowStyle}"
         WindowStartupLocation="CenterScreen"
@@ -53,6 +54,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ProtectorViewModel}">
             <views:ProtectorView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AboutViewModel}">
+            <views:AboutView/>
         </DataTemplate>
     </Window.Resources>
 
@@ -123,8 +127,8 @@
                 <!-- Sidebar footer / version info -->
                 <StackPanel Grid.Row="3" Margin="16,12" Orientation="Vertical">
                     <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,8"/>
-                    <TextBlock Text="ClamUI v1.0.0" FontSize="11" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Powered by ClamAV" FontSize="10" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MainWindow.Version]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MainWindow.PoweredBy]}" FontSize="10" Foreground="{StaticResource DimTextBrush}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                 </StackPanel>
             </Grid>
 

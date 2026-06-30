@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Services;
+using clamshield_antivirus.Services.ScanSvc;
 
 namespace clamshield_antivirus.ViewModels;
 
@@ -16,6 +17,7 @@ public class ProtectorViewModel : ViewModelBase
     private int _threatsBlocked;
     private string _currentStatusText = "Real-Time Protection Disabled";
     private string _statusColor = "#F38BA8"; // Red/Warning by default
+    private string _protectionStatus = "disabled";
     private readonly Dispatcher _dispatcher;
 
     public bool IsRunning
@@ -58,6 +60,12 @@ public class ProtectorViewModel : ViewModelBase
         set => SetProperty(ref _statusColor, value);
     }
 
+    public string ProtectionStatus
+    {
+        get => _protectionStatus;
+        set => SetProperty(ref _protectionStatus, value);
+    }
+
     public ObservableCollection<string> MonitoredPaths { get; } = new();
     public ObservableCollection<string> ActivityLogs { get; } = new();
 
@@ -92,7 +100,13 @@ public class ProtectorViewModel : ViewModelBase
 
     private async Task StartSystemProtectionAsync()
     {
-        LogActivity("Starting Real-Time Protection Shield...");
+        await _dispatcher.InvokeAsync(() =>
+        {
+            ProtectionStatus = "running";
+            CurrentStatusText = "Starting Real-Time Protection...";
+            StatusColor = "#F9E2AF"; // Amber
+            LogActivity("Starting Real-Time Protection Shield...");
+        });
         
         var exclusionPatterns = App.Settings.Get("RealtimeExclusions", string.Empty)
             .Split('|', StringSplitOptions.RemoveEmptyEntries).ToList();
@@ -109,6 +123,9 @@ public class ProtectorViewModel : ViewModelBase
 
     private void StopSystemProtection()
     {
+        ProtectionStatus = "warning";
+        CurrentStatusText = "Stopping Real-Time Protection...";
+        StatusColor = "#F9E2AF"; // Amber
         LogActivity("Disabling Real-Time Protection Shield...");
         App.RealTimeMonitor.Stop();
         UpdateStatusUI();
@@ -120,11 +137,13 @@ public class ProtectorViewModel : ViewModelBase
     {
         if (IsRunning)
         {
+            ProtectionStatus = "protected";
             CurrentStatusText = "System Protected";
             StatusColor = "#A6E3A1"; // Green/SuccessColor
         }
         else
         {
+            ProtectionStatus = "disabled";
             CurrentStatusText = "Real-Time Protection Disabled";
             StatusColor = "#F38BA8"; // Red/ErrorColor
         }

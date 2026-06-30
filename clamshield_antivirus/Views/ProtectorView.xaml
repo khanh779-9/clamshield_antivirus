@@ -28,7 +28,9 @@
                 <ColumnDefinition Width="2*"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,8,0">
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0,0,8,0"
+                    Background="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}, ConverterParameter='card_bg'}"
+                    BorderBrush="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}, ConverterParameter='card_border'}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -41,20 +43,8 @@
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="Real-Time Shield Status" Style="{StaticResource CardSubtitle}"/>
                         <TextBlock Text="{Binding CurrentStatusText}" FontSize="18" FontWeight="Bold" Margin="0,4,0,0"
-                                   Foreground="{Binding IsRunning, Converter={StaticResource StatusToColor}, ConverterParameter='infected'}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource CardTitle}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsRunning}" Value="False">
-                                            <Setter Property="Foreground" Value="{StaticResource ErrorBrush}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                                   Foreground="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}}"
+                                   Style="{StaticResource CardTitle}"/>
                         <TextBlock Text="Active System Shield (Admin)" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0"/>
                     </StackPanel>
 

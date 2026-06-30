@@ -5,7 +5,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace clamshield_antivirus.Services;
+using clamshield_antivirus.Services;
+
+namespace clamshield_antivirus.Services.ScanSvc;
 
 public class RealTimeMonitor : IDisposable
 {
@@ -19,6 +21,37 @@ public class RealTimeMonitor : IDisposable
     // Fields for refined real-time scanning
     private readonly Dictionary<string, DateTime> _pendingFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _concurrencySemaphore = new(8);
+
+    private static readonly HashSet<string> OptimizedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".dll", ".sys", ".scr", ".pif", ".com", ".cpl", ".ocx", ".ax", // PE binaries
+        ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".sh", // Scripts / Batch
+        ".msi", ".msp", ".mst", // Installers
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".docm", ".xlsm", ".pptm", ".rtf", // Office & PDF documents
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".cab", ".iso", ".img", // Archives & Disk images
+        ".jar", ".class", // Java
+        ".htm", ".html", ".xhtml", // Web documents
+        ".lnk", ".inf", ".reg" // Windows files
+    };
+
+    private readonly HashSet<string> _customExtensions = new(StringComparer.OrdinalIgnoreCase);
+
+    public void UpdateCustomExtensions(string customExtensionsStr)
+    {
+        lock (_lock)
+        {
+            _customExtensions.Clear();
+            if (string.IsNullOrWhiteSpace(customExtensionsStr)) return;
+            var parts = customExtensionsStr.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
+            {
+                string ext = part.Trim();
+                if (string.IsNullOrEmpty(ext)) continue;
+                if (!ext.StartsWith(".")) ext = "." + ext;
+                _customExtensions.Add(ext);
+            }
+        }
+    }
 
     public bool IsRunning => _enabled;
     public int TotalScanned => _totalScanned;
@@ -134,6 +167,24 @@ public class RealTimeMonitor : IDisposable
         if (!_enabled) return;
 
         string filePath = e.FullPath;
+
+        // Filter by extension if optimized scanning is enabled
+        if (!App.Settings.Get("RealtimeScanAllExtensions", false))
+        {
+            string ext = Path.GetExtension(filePath);
+            if (string.IsNullOrEmpty(ext)) return;
+
+            bool match = OptimizedExtensions.Contains(ext);
+            if (!match)
+            {
+                lock (_lock)
+                {
+                    match = _customExtensions.Contains(ext);
+                }
+            }
+
+            if (!match) return;
+        }
 
         lock (_pendingFiles)
         {

@@ -58,6 +58,7 @@ public class PeInfo
     public bool HasTls { get; set; }
     public bool HasResource { get; set; }
     public bool HasRelocations { get; set; }
+    public bool IsSigned { get; set; }
     public string[] ImportedDlls { get; set; } = Array.Empty<string>();
     public string[] ImportedFunctions { get; set; } = Array.Empty<string>();
 }
@@ -142,6 +143,7 @@ public static class PeParser
                 if (i == 9 && dirRva > 0 && dirSize > 0) info.HasTls = true; // Index 9 is TLS directory
                 if (i == 2 && dirRva > 0 && dirSize > 0) info.HasResource = true;
                 if (i == 5 && dirRva > 0 && dirSize > 0) info.HasRelocations = true;
+                if (i == 4 && dirRva > 0 && dirSize > 0) info.IsSigned = true; // Index 4 is Security directory
             }
 
             long sectionOffset = peOffset + 24 + sizeOfOptionalHeader;
@@ -351,6 +353,19 @@ public static class PeParser
         }
     }
 
+    public static PeInfo Parse(byte[] data)
+    {
+        try
+        {
+            using var ms = new MemoryStream(data);
+            return Parse(ms);
+        }
+        catch
+        {
+            return new PeInfo { IsValid = false };
+        }
+    }
+
     private static double CalculateEntropy(byte[] data)
     {
         if (data.Length == 0) return 0;
@@ -369,7 +384,7 @@ public static class PeParser
         return entropy;
     }
 
-    private static uint RvaToOffset(uint rva, PeSectionInfo[] sections)
+    public static uint RvaToOffset(uint rva, PeSectionInfo[] sections)
     {
         if (rva == 0) return 0;
         foreach (var sec in sections)

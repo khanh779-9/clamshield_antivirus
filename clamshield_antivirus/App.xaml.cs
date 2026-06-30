@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Windows;
 using clamshield_antivirus.Services;
+using clamshield_antivirus.Services.ScanSvc;
+using clamshield_antivirus.Services.UpdateSvc;
 using clamshield_antivirus.Models;
 using clamshield_antivirus.Views;
 
@@ -66,6 +68,11 @@ public partial class App : Application
         };
 
         Settings = new SettingsService();
+        
+        // Initialize dynamic localization helper
+        string savedLang = Settings.Get("Language", "en.lng");
+        clamshield_antivirus.Helpers.LocalizationService.Instance.Initialize(savedLang);
+
         ComponentDetection = new ComponentDetectionService(Settings);
         Engine = new ClamAvEngine();
         ClamAv = new ClamAvService(ComponentDetection, Settings);

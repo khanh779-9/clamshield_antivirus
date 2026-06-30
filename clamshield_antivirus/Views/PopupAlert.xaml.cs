@@ -50,8 +50,8 @@ namespace clamshield_antivirus.Views
             };
             _timer.Start();
 
-            this.Loaded += (s, e) => RepositionAlerts();
-            this.SizeChanged += (s, e) => RepositionAlerts();
+            this.Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(RepositionAlerts), DispatcherPriority.Render);
+            this.SizeChanged += (s, e) => Dispatcher.BeginInvoke(new Action(RepositionAlerts), DispatcherPriority.Render);
         }
 
         private void ApplyAlertStyle(AlertType type)
@@ -166,20 +166,25 @@ namespace clamshield_antivirus.Views
                 double workAreaRight = SystemParameters.WorkArea.Right;
                 double workAreaBottom = SystemParameters.WorkArea.Bottom;
                 double margin = 10;
-                double windowWidth = 360;
-
                 double currentY = workAreaBottom;
 
                 for (int i = 0; i < _activeAlerts.Count; i++)
                 {
                     var alert = _activeAlerts[i];
+                    
+                    double width = alert.ActualWidth;
+                    if (width <= 0 || double.IsNaN(width))
+                    {
+                        width = 360;
+                    }
+                    
                     double height = alert.ActualHeight;
                     if (height <= 0 || double.IsNaN(height))
                     {
                         height = 140;
                     }
 
-                    double newLeft = workAreaRight - windowWidth - margin;
+                    double newLeft = workAreaRight - width - margin;
                     double newTop = currentY - (height + margin);
 
                     if (Math.Abs(alert.Left - newLeft) > 0.1)
