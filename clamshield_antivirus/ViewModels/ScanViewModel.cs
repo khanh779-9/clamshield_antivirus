@@ -185,7 +185,9 @@ public class ScanViewModel : ViewModelBase
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32\\Tasks"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32\\drivers"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32\\drivers\\etc")
             }.Where(Directory.Exists).ToList()
         });
         Profiles.Add(new ScanProfile
