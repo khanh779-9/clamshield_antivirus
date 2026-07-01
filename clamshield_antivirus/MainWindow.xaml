@@ -28,6 +28,9 @@
 
     <Window.Resources>
         <!-- DataTemplates to resolve ViewModel to View -->
+        <DataTemplate DataType="{x:Type vm:SecurityStatusViewModel}">
+            <views:SecurityStatusView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScanViewModel}">
             <views:ScanView/>
         </DataTemplate>

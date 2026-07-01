@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
              xmlns:models="clr-namespace:clamshield_antivirus.Models"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:LogsViewModel}">
@@ -22,10 +23,10 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0">
-                <TextBlock Text="Historical Logs" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Previous scan and update operations log history" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="Clear All Logs" Style="{StaticResource DangerButton}" Command="{Binding ClearAllCommand}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.ClearAll]}" Style="{StaticResource DangerButton}" Command="{Binding ClearAllCommand}" VerticalAlignment="Center"/>
         </Grid>
 
         <Grid Grid.Row="1" Margin="0,0,0,12">
@@ -34,7 +35,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBox Grid.Column="0" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
-                     Tag="Search logs by keyword..."
+                     Tag="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.SearchTag]}"
                      BorderBrush="{StaticResource BorderBrush}"/>
             <Button Grid.Column="1" Content="⟳" Style="{StaticResource IconButton}" FontSize="16" Margin="6,0,0,0"
                     Command="{Binding RefreshCommand}"/>
@@ -54,7 +55,7 @@
                         Visibility="{Binding Logs.Count, Converter={StaticResource InvBoolToVis}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="📋" FontSize="32" Opacity="0.35" HorizontalAlignment="Center"/>
-                        <TextBlock Text="No log history" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.NoHistory]}" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -101,8 +102,12 @@
                                 
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Summary}" FontWeight="Bold" FontSize="13" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding ScanPath, StringFormat='Targets: {0}'}" FontSize="11" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
-                                               Visibility="{Binding ScanPath, Converter={StaticResource StringToVis}}"/>
+                                    <TextBlock FontSize="11" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding ScanPath, Converter={StaticResource StringToVis}}">
+                                        <Run Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.TargetsLabel], Mode=OneWay}"/>
+                                        <Run Text=" "/>
+                                        <Run Text="{Binding ScanPath, Mode=OneWay}"/>
+                                    </TextBlock>
                                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                         <Border CornerRadius="3" Padding="4,1" Background="{StaticResource SurfaceBrush}" BorderThickness="0" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Type}" FontSize="9" Foreground="{StaticResource SecondaryTextBrush}"/>
@@ -128,10 +133,10 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Log Output Detail" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.DetailTitle]}" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Copy" Style="{StaticResource SecondaryButton}" Padding="10,5" Command="{Binding CopyLogCommand}" Margin="0,0,6,0"/>
-                        <Button Content="Export" Style="{StaticResource SecondaryButton}" Padding="10,5" Command="{Binding ExportLogCommand}"/>
+                        <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.Copy]}" Style="{StaticResource SecondaryButton}" Padding="10,5" Command="{Binding CopyLogCommand}" Margin="0,0,6,0"/>
+                        <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Logs.Export]}" Style="{StaticResource SecondaryButton}" Padding="10,5" Command="{Binding ExportLogCommand}"/>
                     </StackPanel>
                 </Grid>
 

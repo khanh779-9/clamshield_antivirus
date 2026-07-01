@@ -211,10 +211,216 @@ public static class PatternCache
         {
             if (_cache.TryGetValue(hexStr, out var cached))
                 return cached;
-            var parsed = ParseHexPattern(hexStr);
+
+            string baseHex = hexStr;
+            string modifiers = string.Empty;
+            int modIdx = hexStr.IndexOf("::", StringComparison.Ordinal);
+            if (modIdx >= 0)
+            {
+                baseHex = hexStr.Substring(0, modIdx);
+                modifiers = hexStr.Substring(modIdx + 2);
+            }
+
+            var parsed = ParseHexPattern(baseHex);
+            if (!string.IsNullOrEmpty(modifiers))
+            {
+                parsed = ApplyModifiers(parsed, modifiers);
+                RecomputeMetadata(parsed);
+            }
+
             if (_cache.Count < MaxSize)
                 _cache[hexStr] = parsed;
             return parsed;
+        }
+    }
+
+    private static ParsedPattern ApplyModifiers(ParsedPattern pattern, string modifiers)
+    {
+        if (string.IsNullOrEmpty(modifiers)) return pattern;
+
+        bool caseInsensitive = modifiers.Contains('i');
+        bool wide = modifiers.Contains('w');
+        bool ascii = modifiers.Contains('a');
+
+        ParsedPattern basePattern = pattern;
+        if (caseInsensitive)
+        {
+            basePattern = MakeCaseInsensitive(pattern);
+        }
+
+        if (wide)
+        {
+            ParsedPattern widePattern = MakeWide(basePattern);
+            if (ascii || modifiers.Contains('a'))
+            {
+                var combined = new ParsedPattern();
+                combined.HasWildcards = true;
+                combined.Elements.Add(new AltConstraint
+                {
+                    Alternatives = new ParsedPattern[] { basePattern, widePattern }
+                });
+                return combined;
+            }
+            else
+            {
+                return widePattern;
+            }
+        }
+
+        return basePattern;
+    }
+
+    private static ParsedPattern MakeCaseInsensitive(ParsedPattern pattern)
+    {
+        var result = new ParsedPattern();
+        result.HasWildcards = pattern.HasWildcards;
+        foreach (var el in pattern.Elements)
+        {
+            if (el is HexConstraint hc)
+            {
+                if (hc.HighNibble.HasValue && hc.LowNibble.HasValue)
+                {
+                    byte b = (byte)((hc.HighNibble.Value << 4) | hc.LowNibble.Value);
+                    if ((b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A))
+                    {
+                        byte swapped = (b >= 0x41 && b <= 0x5A) ? (byte)(b + 0x20) : (byte)(b - 0x20);
+
+                        var origPat = new ParsedPattern();
+                        origPat.Elements.Add(new HexConstraint { HighNibble = hc.HighNibble, LowNibble = hc.LowNibble });
+
+                        var swapPat = new ParsedPattern();
+                        swapPat.Elements.Add(new HexConstraint { HighNibble = (swapped >> 4) & 0xF, LowNibble = swapped & 0xF });
+
+                        result.Elements.Add(new AltConstraint
+                        {
+                            Alternatives = new ParsedPattern[] { origPat, swapPat }
+                        });
+                        result.HasWildcards = true;
+                    }
+                    else
+                    {
+                        result.Elements.Add(new HexConstraint { HighNibble = hc.HighNibble, LowNibble = hc.LowNibble });
+                    }
+                }
+                else
+                {
+                    result.Elements.Add(new HexConstraint { HighNibble = hc.HighNibble, LowNibble = hc.LowNibble });
+                }
+            }
+            else if (el is AltConstraint alt)
+            {
+                var newAlt = new AltConstraint();
+                var newAlts = new List<ParsedPattern>();
+                foreach (var altPat in alt.Alternatives)
+                {
+                    newAlts.Add(MakeCaseInsensitive(altPat));
+                }
+                newAlt.Alternatives = newAlts.ToArray();
+                result.Elements.Add(newAlt);
+            }
+            else if (el is NegatedAltConstraint neg)
+            {
+                var newNeg = new NegatedAltConstraint();
+                var newAlts = new List<ParsedPattern>();
+                foreach (var altPat in neg.Alternatives)
+                {
+                    newAlts.Add(MakeCaseInsensitive(altPat));
+                }
+                newNeg.Alternatives = newAlts.ToArray();
+                result.Elements.Add(newNeg);
+            }
+            else
+            {
+                result.Elements.Add(el);
+            }
+        }
+        return result;
+    }
+
+    private static ParsedPattern MakeWide(ParsedPattern pattern)
+    {
+        var result = new ParsedPattern();
+        result.HasWildcards = pattern.HasWildcards;
+        foreach (var el in pattern.Elements)
+        {
+            if (el is HexConstraint hc)
+            {
+                result.Elements.Add(new HexConstraint { HighNibble = hc.HighNibble, LowNibble = hc.LowNibble });
+                result.Elements.Add(new HexConstraint { HighNibble = 0, LowNibble = 0 });
+            }
+            else if (el is AltConstraint alt)
+            {
+                var newAlt = new AltConstraint();
+                var newAlts = new List<ParsedPattern>();
+                foreach (var altPat in alt.Alternatives)
+                {
+                    newAlts.Add(MakeWide(altPat));
+                }
+                newAlt.Alternatives = newAlts.ToArray();
+                result.Elements.Add(newAlt);
+            }
+            else if (el is NegatedAltConstraint neg)
+            {
+                var newNeg = new NegatedAltConstraint();
+                var newAlts = new List<ParsedPattern>();
+                foreach (var altPat in neg.Alternatives)
+                {
+                    newAlts.Add(MakeWide(altPat));
+                }
+                newNeg.Alternatives = newAlts.ToArray();
+                result.Elements.Add(newNeg);
+            }
+            else
+            {
+                result.Elements.Add(el);
+            }
+        }
+        return result;
+    }
+
+    private static void RecomputeMetadata(ParsedPattern pattern)
+    {
+        pattern.HasWildcards = false;
+        pattern.PrefixBytes = null;
+
+        foreach (var el in pattern.Elements)
+        {
+            if (el is GapConstraint || el is AltConstraint || el is NegatedAltConstraint)
+            {
+                pattern.HasWildcards = true;
+            }
+            else if (el is HexConstraint hc)
+            {
+                if (!hc.HighNibble.HasValue || !hc.LowNibble.HasValue)
+                {
+                    pattern.HasWildcards = true;
+                }
+            }
+        }
+
+        for (int j = 0; j < pattern.Elements.Count; j++)
+        {
+            if (pattern.Elements[j] is HexConstraint hc && hc.HighNibble.HasValue && hc.LowNibble.HasValue)
+            {
+                int count = 0;
+                while (j + count < pattern.Elements.Count && pattern.Elements[j + count] is HexConstraint hc2 && hc2.HighNibble.HasValue && hc2.LowNibble.HasValue)
+                    count++;
+                if (count >= 2)
+                {
+                    int prefixLen = Math.Min(count, 32);
+                    pattern.PrefixBytes = new byte[prefixLen];
+                    for (int k = 0; k < prefixLen; k++)
+                    {
+                        var h = (HexConstraint)pattern.Elements[j + k];
+                        pattern.PrefixBytes[k] = (byte)((h.HighNibble!.Value << 4) | h.LowNibble!.Value);
+                    }
+                }
+                break;
+            }
+            else if (pattern.Elements[j] is GapConstraint || pattern.Elements[j] is AltConstraint || pattern.Elements[j] is NegatedAltConstraint)
+            {
+                break;
+            }
         }
     }
 
@@ -1447,31 +1653,41 @@ public class ClamAvEngine
             if (rawPart.StartsWith("fuzzy_img", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Strip subsignature modifiers like ::i, ::w, ::f, ::a (not supported yet)
+            string subsigBody = rawPart;
+            string modifiers = string.Empty;
             int modIdx = rawPart.IndexOf("::", StringComparison.Ordinal);
             if (modIdx >= 0)
-                rawPart = rawPart.Substring(0, modIdx);
+            {
+                subsigBody = rawPart.Substring(0, modIdx);
+                modifiers = rawPart.Substring(modIdx + 2);
+            }
 
-            string hexPart = rawPart;
+            string hexPart = subsigBody;
             int startOff = -1;
             bool isEofRel = false;
             bool isEpRel = false;
             int secIdx = 0;
 
-            if (rawPart.Contains(':'))
+            if (subsigBody.Contains(':'))
             {
-                var colonIdx = rawPart.IndexOf(':');
-                string potentialOffset = rawPart.Substring(0, colonIdx);
+                var colonIdx = subsigBody.IndexOf(':');
+                string potentialOffset = subsigBody.Substring(0, colonIdx);
 
                 if (ParseLdbOffset(potentialOffset, out startOff, out isEofRel, out isEpRel, out secIdx))
                 {
-                    hexPart = rawPart.Substring(colonIdx + 1).Trim();
+                    hexPart = subsigBody.Substring(colonIdx + 1).Trim();
                 }
             }
 
             if (hexPart.Length < 4) continue;
 
-            var parsed = PatternCache.GetOrParse(hexPart);
+            string cacheKey = hexPart;
+            if (!string.IsNullOrEmpty(modifiers))
+            {
+                cacheKey = hexPart + "::" + modifiers;
+            }
+
+            var parsed = PatternCache.GetOrParse(cacheKey);
             if (parsed.Elements.Count > 0)
                 subPatterns.Add(new LdbSubPattern
                 {

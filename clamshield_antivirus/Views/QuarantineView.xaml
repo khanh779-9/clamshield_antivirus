@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
              xmlns:models="clr-namespace:clamshield_antivirus.Models"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:QuarantineViewModel}">
@@ -65,13 +66,13 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="🛡️" Style="{StaticResource CardIcon}"/>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock Text="Quarantine Storage" Style="{StaticResource HeadingText}" FontSize="18"/>
-                    <TextBlock Text="Secure storage for isolated threats" Style="{StaticResource SubheadingText}" Margin="0,2,0,0"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.Title]}" Style="{StaticResource HeadingText}" FontSize="18"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="Clear All" Style="{StaticResource DangerButton}" Padding="12,7"
+                    <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ClearAll]}" Style="{StaticResource DangerButton}" Padding="12,7"
                             Command="{Binding ClearAllCommand}" Margin="0,0,8,0"/>
-                    <Button Content="Clear Old (30d+)" Style="{StaticResource SecondaryButton}" Padding="12,7"
+                    <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ClearOld]}" Style="{StaticResource SecondaryButton}" Padding="12,7"
                             Command="{Binding ClearOldCommand}"/>
                 </StackPanel>
             </Grid>
@@ -93,11 +94,11 @@
                     <TextBlock Text="{Binding ItemCountText}" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}"/>
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="Delete Selected" Style="{StaticResource SecondaryButton}" Padding="10,5" FontSize="11"
+                <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.DeleteSelected]}" Style="{StaticResource SecondaryButton}" Padding="10,5" FontSize="11"
                         Command="{Binding DeleteSelectedCommand}" Margin="16,0,0,0" Height="28"/>
 
                 <TextBox Grid.Column="2" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}" 
-                         Tag="Search by threat name or path..." Margin="16,0,0,0"
+                         Tag="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.SearchTag]}" Margin="16,0,0,0"
                          BorderBrush="{StaticResource BorderBrush}" Height="28" VerticalContentAlignment="Center"/>
 
                 <Button Grid.Column="3" Content="⟳" Style="{StaticResource IconButton}" FontSize="14" Margin="6,0,0,0"
@@ -112,8 +113,8 @@
                     Visibility="{Binding HasEntries, Converter={StaticResource InvBoolToVis}}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock Text="🛡️" FontSize="40" Opacity="0.35" HorizontalAlignment="Center"/>
-                    <TextBlock Text="No quarantined files" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Your system is secure and clean of isolated threats" Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.NoFiles]}" FontWeight="SemiBold" FontSize="14" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.NoFilesDesc]}" Style="{StaticResource CardSubtitle}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -144,7 +145,7 @@
                                 </GridViewColumn>
 
                                 <!-- Column 1: File Name -->
-                                <GridViewColumn Header="File Name" Width="160">
+                                <GridViewColumn Header="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ColFileName]}" Width="160">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileName}" Style="{StaticResource RowText}"
@@ -154,7 +155,7 @@
                                 </GridViewColumn>
 
                                 <!-- Column 2: Original Location -->
-                                <GridViewColumn Header="Original Location" Width="240">
+                                <GridViewColumn Header="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ColOriginalPath]}" Width="240">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <TextBlock Text="{Binding OriginalPath}" ToolTip="{Binding OriginalPath}" Style="{StaticResource RowText}"
@@ -164,7 +165,7 @@
                                 </GridViewColumn>
 
                                 <!-- Column 3: Threat Name -->
-                                <GridViewColumn Header="Threat Name" Width="140">
+                                <GridViewColumn Header="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ColThreatName]}" Width="140">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <TextBlock Text="{Binding ThreatName}" ToolTip="{Binding ThreatName}" Style="{StaticResource RowText}"
@@ -174,7 +175,7 @@
                                 </GridViewColumn>
 
                                 <!-- Column 4: Date Isolated -->
-                                <GridViewColumn Header="Date Isolated" Width="110">
+                                <GridViewColumn Header="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ColDateIsolated]}" Width="110">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <TextBlock Text="{Binding QuarantineDate, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" Style="{StaticResource RowText}"
@@ -184,7 +185,7 @@
                                 </GridViewColumn>
 
                                 <!-- Column 5: Size -->
-                                <GridViewColumn Header="Size" Width="65">
+                                <GridViewColumn Header="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.ColSize]}" Width="65">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConv}}" Style="{StaticResource RowText}"
@@ -198,10 +199,10 @@
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate DataType="{x:Type models:QuarantineEntry}">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Button Content="Restore" Style="{StaticResource RowActionButton}"
+                                                <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.Restore]}" Style="{StaticResource RowActionButton}"
                                                         Background="{StaticResource AccentBrush}" Foreground="White"
                                                         Command="{Binding DataContext.RestoreCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
-                                                <Button Content="Delete" Style="{StaticResource RowActionButton}"
+                                                <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.Delete]}" Style="{StaticResource RowActionButton}"
                                                         Background="#44D32F2F" Foreground="{StaticResource ErrorBrush}"
                                                         Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                                             </StackPanel>
@@ -224,13 +225,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SelectedEntry.ThreatName, StringFormat='Selected: {0}'}" FontWeight="SemiBold" FontSize="13"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.SelectedLabel]}" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text=" " FontSize="13"/>
+                        <TextBlock Text="{Binding SelectedEntry.ThreatName}" FontWeight="SemiBold" FontSize="13"/>
+                    </StackPanel>
                     <TextBlock Text="{Binding SelectedEntry.OriginalPath}" FontSize="11" Foreground="{StaticResource DimTextBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="Restore File" Style="{StaticResource AccentButton}" Padding="14,7" Margin="0,0,8,0"
+                    <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.RestoreFile]}" Style="{StaticResource AccentButton}" Padding="14,7" Margin="0,0,8,0"
                             Command="{Binding RestoreCommand}"/>
-                    <Button Content="Delete Permanently" Style="{StaticResource DangerButton}" Padding="14,7"
+                    <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Quarantine.DeletePermanently]}" Style="{StaticResource DangerButton}" Padding="14,7"
                             Command="{Binding DeleteCommand}"/>
                 </StackPanel>
             </Grid>

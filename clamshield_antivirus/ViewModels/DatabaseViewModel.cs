@@ -16,8 +16,8 @@ public class DatabaseViewModel : ViewModelBase
 {
     private bool _isUpdating;
     private string _progressLog = string.Empty;
-    private string _statusText = "Ready to update definitions";
-    private string _lastUpdateTime = "Unknown";
+    private string _statusText = string.Empty;
+    private string _lastUpdateTime = string.Empty;
     private string _dbVersionSummary = string.Empty;
     private CancellationTokenSource? _cts;
     private readonly ObservableCollection<DbVersionInfo> _dbVersions = new();
@@ -71,9 +71,23 @@ public class DatabaseViewModel : ViewModelBase
 
     public DatabaseViewModel()
     {
+        _statusText = LocalizationService.Instance["Database.StatusReady"];
         UpdateCommand = new AsyncRelayCommand(UpdateDatabaseAsync);
         CancelUpdateCommand = new RelayCommand(CancelUpdate);
         CheckFreshclamStatus();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                if (!IsUpdating)
+                {
+                    StatusText = LocalizationService.Instance["Database.StatusReady"];
+                }
+                UpdateLastUpdateTime();
+                RefreshDbVersions();
+            }
+        };
     }
 
     private void CheckFreshclamStatus()
@@ -95,7 +109,7 @@ public class DatabaseViewModel : ViewModelBase
         }
         else
         {
-            DbVersionSummary = "No databases installed";
+            DbVersionSummary = LocalizationService.Instance["Database.NoDbsInstalled"];
         }
     }
 
@@ -137,14 +151,15 @@ public class DatabaseViewModel : ViewModelBase
             }
         }
 
-        LastUpdateTime = App.Settings.Get("LastDatabaseUpdateTime", "Never updated");
+        string updateTime = App.Settings.Get("LastDatabaseUpdateTime", string.Empty);
+        LastUpdateTime = string.IsNullOrEmpty(updateTime) ? LocalizationService.Instance["Database.NeverUpdated"] : updateTime;
     }
 
     private async Task UpdateDatabaseAsync()
     {
         IsUpdating = true;
-        ProgressLog = "Starting database update...\n";
-        StatusText = "Downloading virus definitions...";
+        ProgressLog = LocalizationService.Instance["Database.LogStarting"] + "\n";
+        StatusText = LocalizationService.Instance["Database.StatusDownloading"];
         _cts = new CancellationTokenSource();
 
         var progressReporter = new Progress<string>(line =>
@@ -169,8 +184,8 @@ public class DatabaseViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            StatusText = "Update failed";
-            ProgressLog += $"\n[Error] {ex.Message}\n";
+            StatusText = LocalizationService.Instance["Database.StatusFailed"];
+            ProgressLog += $"\n[{LocalizationService.Instance["Common.Error"]}] {ex.Message}\n";
         }
         finally
         {
@@ -183,7 +198,7 @@ public class DatabaseViewModel : ViewModelBase
     private void CancelUpdate()
     {
         _cts?.Cancel();
-        StatusText = "Cancelling update...";
-        ProgressLog += "\n[Cancellation Requested]\n";
+        StatusText = LocalizationService.Instance["Database.StatusCancelling"];
+        ProgressLog += $"\n[{LocalizationService.Instance["Database.LogCancelled"]}]\n";
     }
 }

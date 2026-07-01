@@ -63,6 +63,7 @@ public class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         // Khởi tạo các ViewModels con
+        var statusVm = new SecurityStatusViewModel(this);
         var scanVm = new ScanViewModel();
         var protectorVm = new ProtectorViewModel();
         var dbVm = new DatabaseViewModel();
@@ -73,6 +74,7 @@ public class MainViewModel : ViewModelBase
         var auditVm = new AuditViewModel();
 
         // Tạo danh sách Navigation Items tương tự ClamUI trên Linux
+        NavigationItems.Add(new NavigationItem("Security Status", "💻", statusVm));
         NavigationItems.Add(new NavigationItem("Scan", "🔍", scanVm));
         NavigationItems.Add(new NavigationItem("Protector", "🛡️", protectorVm));
         NavigationItems.Add(new NavigationItem("Database", "📦", dbVm));
@@ -88,7 +90,7 @@ public class MainViewModel : ViewModelBase
         var aboutVm = new AboutViewModel();
         NavigationItems.Add(new NavigationItem("About", "ℹ️", aboutVm));
 
-        // Mặc định chọn Scan
+        // Mặc định chọn Security Status làm trang chủ
         SelectedNavigationItem = NavigationItems[0];
 
         // Listen for language changes and apply dynamically
@@ -120,6 +122,9 @@ public class MainViewModel : ViewModelBase
 
     private void UpdateLanguage()
     {
+        var statusItem = NavigationItems.FirstOrDefault(i => i.ViewModel is SecurityStatusViewModel);
+        if (statusItem != null) statusItem.Title = LocalizationService.Instance["MainWindow.SecurityStatus"];
+
         var scanItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ScanViewModel);
         if (scanItem != null) scanItem.Title = LocalizationService.Instance["MainWindow.Scan"];
 
@@ -174,6 +179,35 @@ public class MainViewModel : ViewModelBase
             if (scanVm.StartScanCommand.CanExecute(null))
             {
                 scanVm.StartScanCommand.Execute(null);
+            }
+        }
+    }
+
+    public void HandleProfileScanRequest(string profileId)
+    {
+        if (string.IsNullOrEmpty(profileId)) return;
+
+        var scanItem = NavigationItems.FirstOrDefault(item => item.ViewModel is ScanViewModel);
+        if (scanItem != null)
+        {
+            SelectedNavigationItem = scanItem;
+        }
+
+        if (scanItem?.ViewModel is ScanViewModel scanVm)
+        {
+            if (scanVm.IsScanning)
+            {
+                try { scanVm.CancelScanCommand.Execute(null); } catch { }
+            }
+
+            var profile = scanVm.Profiles.FirstOrDefault(p => p.Id == profileId);
+            if (profile != null)
+            {
+                scanVm.SelectedProfile = profile;
+                if (scanVm.StartScanCommand.CanExecute(null))
+                {
+                    scanVm.StartScanCommand.Execute(null);
+                }
             }
         }
     }

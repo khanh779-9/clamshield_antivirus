@@ -135,7 +135,7 @@ public class ComponentDetectionService
                            (Directory.GetFiles(DbDir, "*.c*d").Length > 0 ||
                             Directory.GetFiles(DbDir, "*.*db").Length > 0);
 
-        string dbVersion = "Not downloaded";
+        string dbVersion = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionNotDownloaded"];
         if (dbInstalled)
         {
             var cvdInfos = new Dictionary<string, CvdInfo>(StringComparer.OrdinalIgnoreCase);
@@ -153,7 +153,9 @@ public class ComponentDetectionService
             else
             {
                 var updateTime = _settingsService.Get("LastDatabaseUpdateTime", string.Empty);
-                dbVersion = string.IsNullOrEmpty(updateTime) ? "Installed" : $"Updated: {updateTime}";
+                dbVersion = string.IsNullOrEmpty(updateTime) 
+                    ? clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionInstalled"] 
+                    : string.Format(clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionUpdated"], updateTime);
             }
         }
 
@@ -162,34 +164,34 @@ public class ComponentDetectionService
             new ComponentStatus
             {
                 ComponentId = "csharp_engine",
-                Name = "C# Antivirus Scan Engine",
-                Description = "Built-in high-performance file signature search engine (Aho-Corasick + Boyer-Moore).",
+                Name = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.csharp_engine.Name"],
+                Description = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.csharp_engine.Desc"],
                 IsInstalled = true,
-                Version = "ClamUI Engine v1.1"
+                Version = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionCSharpEngine"]
             },
             new ComponentStatus
             {
                 ComponentId = "clamav_db",
-                Name = "ClamAV Signature Database",
-                Description = "Local virus signature definitions. Required to identify threats.",
+                Name = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.clamav_db.Name"],
+                Description = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.clamav_db.Desc"],
                 IsInstalled = dbInstalled,
                 Version = dbVersion
             },
             new ComponentStatus
             {
                 ComponentId = "quarantine_service",
-                Name = "Quarantine Storage Service",
-                Description = "Isolates infected files in secure encrypted storage.",
+                Name = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.quarantine_service.Name"],
+                Description = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.quarantine_service.Desc"],
                 IsInstalled = true,
-                Version = "Active"
+                Version = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionActive"]
             },
             new ComponentStatus
             {
                 ComponentId = "log_manager",
-                Name = "Log History Manager",
-                Description = "Persists operational scan metrics and results.",
+                Name = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.log_manager.Name"],
+                Description = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.log_manager.Desc"],
                 IsInstalled = true,
-                Version = "Active"
+                Version = clamshield_antivirus.Helpers.LocalizationService.Instance["Components.VersionActive"]
             }
         };
     }

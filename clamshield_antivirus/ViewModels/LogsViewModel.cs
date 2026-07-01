@@ -17,7 +17,7 @@ public class LogsViewModel : ViewModelBase
 {
     private LogEntry? _selectedLog;
     private string _searchQuery = string.Empty;
-    private string _logDetail = "Select a log entry to view details.";
+    private string _logDetail = string.Empty;
     private List<LogEntry> _allLogs = new();
 
     public ObservableCollection<LogEntry> Logs { get; } = new();
@@ -36,7 +36,7 @@ public class LogsViewModel : ViewModelBase
                 }
                 else
                 {
-                    LogDetail = "Select a log entry to view details.";
+                    LogDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
                 }
             }
         }
@@ -69,12 +69,24 @@ public class LogsViewModel : ViewModelBase
 
     public LogsViewModel()
     {
+        _logDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
         RefreshCommand = new AsyncRelayCommand(LoadLogsAsync);
         ClearAllCommand = new AsyncRelayCommand(ClearAllLogsAsync);
         ExportLogCommand = new AsyncRelayCommand(ExportLogAsync);
         CopyLogCommand = new RelayCommand(CopyLog);
 
         _ = LoadLogsAsync();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                if (SelectedLog == null)
+                {
+                    LogDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
+                }
+            }
+        };
     }
 
     public async Task LoadLogsAsync()
@@ -106,8 +118,8 @@ public class LogsViewModel : ViewModelBase
         if (_allLogs.Count == 0) return;
 
         var result = ModernMessageBox.Show(
-            "Are you sure you want to permanently delete all scan and update logs? This cannot be undone.",
-            "Clear Logs",
+            LocalizationService.Instance["Logs.ConfirmClear"],
+            LocalizationService.Instance["Logs.ClearTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -126,7 +138,7 @@ public class LogsViewModel : ViewModelBase
 
         var dialog = new SaveFileDialog
         {
-            Title = "Export Log Details",
+            Title = LocalizationService.Instance["Logs.ExportTitle"],
             Filter = "Log Files (*.log)|*.log|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
             FileName = $"clamui_{SelectedLog.Type.ToLower()}_{SelectedLog.Timestamp:yyyyMMdd_HHmmss}.log"
         };
@@ -138,11 +150,11 @@ public class LogsViewModel : ViewModelBase
                 string details = SelectedLog.Details;
                 string fileName = dialog.FileName;
                 await Task.Run(() => File.WriteAllText(fileName, details));
-                ModernMessageBox.Show("Log exported successfully.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                ModernMessageBox.Show(LocalizationService.Instance["Logs.ExportSuccess"], LocalizationService.Instance["Logs.ExportSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                ModernMessageBox.Show($"Failed to export log: {ex.Message}", "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show(string.Format(LocalizationService.Instance["Logs.ExportFailed"], ex.Message), LocalizationService.Instance["Logs.ExportFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -154,11 +166,11 @@ public class LogsViewModel : ViewModelBase
         try
         {
             Clipboard.SetText(SelectedLog.Details);
-            ModernMessageBox.Show("Log details copied to clipboard.", "Copied", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(LocalizationService.Instance["Logs.Copied"], LocalizationService.Instance["Logs.CopiedTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            ModernMessageBox.Show($"Failed to copy log: {ex.Message}", "Copy Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Logs.CopyFailed"], ex.Message), LocalizationService.Instance["Logs.CopyFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

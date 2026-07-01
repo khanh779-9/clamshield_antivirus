@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
         mc:Ignorable="d"
         Title="{Binding Caption}"
         SizeToContent="WidthAndHeight"
@@ -58,12 +59,11 @@
                            TextWrapping="Wrap" VerticalAlignment="Center" LineHeight="18"/>
             </Grid>
 
-            <!-- Buttons Footer -->
             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnOk" Content="OK" Style="{StaticResource AccentButton}" Width="85" Height="32" Padding="0" Click="BtnOk_Click" Visibility="Collapsed"/>
-                <Button x:Name="BtnYes" Content="Yes" Style="{StaticResource AccentButton}" Width="85" Height="32" Padding="0" Margin="0,0,8,0" Click="BtnYes_Click" Visibility="Collapsed"/>
-                <Button x:Name="BtnNo" Content="No" Style="{StaticResource SecondaryButton}" Width="85" Height="32" Padding="0" Margin="0,0,8,0" Click="BtnNo_Click" Visibility="Collapsed"/>
-                <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource SecondaryButton}" Width="85" Height="32" Padding="0" Click="BtnCancel_Click" Visibility="Collapsed"/>
+                <Button x:Name="BtnOk" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MessageBox.Ok]}" Style="{StaticResource AccentButton}" Width="85" Height="32" Padding="0" Click="BtnOk_Click" Visibility="Collapsed"/>
+                <Button x:Name="BtnYes" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MessageBox.Yes]}" Style="{StaticResource AccentButton}" Width="85" Height="32" Padding="0" Margin="0,0,8,0" Click="BtnYes_Click" Visibility="Collapsed"/>
+                <Button x:Name="BtnNo" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MessageBox.No]}" Style="{StaticResource SecondaryButton}" Width="85" Height="32" Padding="0" Margin="0,0,8,0" Click="BtnNo_Click" Visibility="Collapsed"/>
+                <Button x:Name="BtnCancel" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[MessageBox.Cancel]}" Style="{StaticResource SecondaryButton}" Width="85" Height="32" Padding="0" Click="BtnCancel_Click" Visibility="Collapsed"/>
             </StackPanel>
         </Grid>
     </Border>

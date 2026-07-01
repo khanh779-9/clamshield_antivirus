@@ -25,6 +25,22 @@ public class ClamAvService
     private bool _signaturesLoaded;
     private bool _signaturesDirty;
     private long _dbDirTimestamp;
+    private bool _isSignatureLoading;
+
+    public bool IsSignatureLoading
+    {
+        get => _isSignatureLoading;
+        private set
+        {
+            if (_isSignatureLoading != value)
+            {
+                _isSignatureLoading = value;
+                SignatureLoadingStateChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    public event EventHandler? SignatureLoadingStateChanged;
 
     public ClamAvService(ComponentDetectionService detectionService, SettingsService settingsService)
     {
@@ -360,101 +376,109 @@ public class ClamAvService
 
     private void LoadLocalSignatureDatabases(CancellationToken cancellationToken)
     {
-        lock (_dbLock)
+        IsSignatureLoading = true;
+        try
         {
-            if (!Directory.Exists(DbDir)) return;
-
-            // Double check inside the lock
-            if (_signaturesLoaded && !_signaturesDirty)
+            lock (_dbLock)
             {
-                long currentTimestamp = Directory.Exists(DbDir)
-                    ? Directory.GetLastWriteTimeUtc(DbDir).Ticks : 0;
-                if (currentTimestamp == _dbDirTimestamp)
-                    return;
-            }
+                if (!Directory.Exists(DbDir)) return;
 
-            _signaturesDirty = false;
-            _dbDirTimestamp = Directory.GetLastWriteTimeUtc(DbDir).Ticks;
-            App.Engine.Clear();
-
-            try
-            {
-                var cvdFiles = Directory.GetFiles(DbDir, "*.c*d");
-                foreach (var cvdFile in cvdFiles)
+                // Double check inside the lock
+                if (_signaturesLoaded && !_signaturesDirty)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try
-                    {
-                        var cvdInfo = CvdReader.ReadCvdHeader(cvdFile);
-                        if (cvdInfo != null)
-                        {
-                            App.Engine.SetDbBuildTime(cvdInfo.BuildTime);
-                        }
-
-                        var files = CvdReader.ExtractCvd(cvdFile);
-                        var sortedFiles = files.OrderBy(f =>
-                        {
-                            string e = Path.GetExtension(f.FileName).ToLowerInvariant();
-                            if (e == ".fp" || e == ".sfp") return 0;
-                            if (e == ".crb" || e == ".cat") return 1;
-                            if (e == ".ign" || e == ".ign2") return 2;
-                            return 3;
-                        }).ToList();
-
-                        foreach (var file in sortedFiles)
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            using (var ms = new MemoryStream(file.Content))
-                            {
-                                int loaded = App.Engine.LoadSignaturesFromStream(file.FileName, ms);
-                                Debug.WriteLine($"CVD {Path.GetFileName(cvdFile)} -> {file.FileName}: loaded {loaded} signatures");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Failed to parse CVD signature {cvdFile}: {ex.Message}");
-                    }
+                    long currentTimestamp = Directory.Exists(DbDir)
+                        ? Directory.GetLastWriteTimeUtc(DbDir).Ticks : 0;
+                    if (currentTimestamp == _dbDirTimestamp)
+                        return;
                 }
 
-                var supportedExtensions = new[] { 
-                    "*.fp", "*.sfp", 
-                    "*.crb", "*.cat",
-                    "*.ign", "*.ign2", 
-                    "*.hdb", "*.hdu", "*.hsb", "*.hsu", 
-                    "*.ndb", "*.ndu", "*.ldb", "*.ldu", 
-                    "*.mdb", "*.mdu", "*.msb", "*.msu", 
-                    "*.sha256", "*.db", "*.sdb", "*.cdb", "*.idb" 
-                };
+                _signaturesDirty = false;
+                _dbDirTimestamp = Directory.GetLastWriteTimeUtc(DbDir).Ticks;
+                App.Engine.Clear();
 
-                foreach (var ext in supportedExtensions)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var sigFiles = Directory.GetFiles(DbDir, ext);
-                    foreach (var sigFile in sigFiles)
+                    var cvdFiles = Directory.GetFiles(DbDir, "*.c*d");
+                    foreach (var cvdFile in cvdFiles)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         try
                         {
-                            using (var fs = File.OpenRead(sigFile))
+                            var cvdInfo = CvdReader.ReadCvdHeader(cvdFile);
+                            if (cvdInfo != null)
                             {
-                                int loaded = App.Engine.LoadSignaturesFromStream(Path.GetFileName(sigFile), fs);
-                                Debug.WriteLine($"Loaded {loaded} signatures from {Path.GetFileName(sigFile)}");
+                                App.Engine.SetDbBuildTime(cvdInfo.BuildTime);
+                            }
+
+                            var files = CvdReader.ExtractCvd(cvdFile);
+                            var sortedFiles = files.OrderBy(f =>
+                            {
+                                string e = Path.GetExtension(f.FileName).ToLowerInvariant();
+                                if (e == ".fp" || e == ".sfp") return 0;
+                                if (e == ".crb" || e == ".cat") return 1;
+                                if (e == ".ign" || e == ".ign2") return 2;
+                                return 3;
+                            }).ToList();
+
+                            foreach (var file in sortedFiles)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                using (var ms = new MemoryStream(file.Content))
+                                {
+                                    int loaded = App.Engine.LoadSignaturesFromStream(file.FileName, ms);
+                                    Debug.WriteLine($"CVD {Path.GetFileName(cvdFile)} -> {file.FileName}: loaded {loaded} signatures");
+                                }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Failed to parse CVD signature {cvdFile}: {ex.Message}");
+                        }
                     }
-                }
 
-                cancellationToken.ThrowIfCancellationRequested();
-                App.Engine.Compile();
-                _signaturesLoaded = true;
-                TrimMemory();
+                    var supportedExtensions = new[] { 
+                        "*.fp", "*.sfp", 
+                        "*.crb", "*.cat",
+                        "*.ign", "*.ign2", 
+                        "*.hdb", "*.hdu", "*.hsb", "*.hsu", 
+                        "*.ndb", "*.ndu", "*.ldb", "*.ldu", 
+                        "*.mdb", "*.mdu", "*.msb", "*.msu", 
+                        "*.sha256", "*.db", "*.sdb", "*.cdb", "*.idb" 
+                    };
+
+                    foreach (var ext in supportedExtensions)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var sigFiles = Directory.GetFiles(DbDir, ext);
+                        foreach (var sigFile in sigFiles)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            try
+                            {
+                                using (var fs = File.OpenRead(sigFile))
+                                {
+                                    int loaded = App.Engine.LoadSignaturesFromStream(Path.GetFileName(sigFile), fs);
+                                    Debug.WriteLine($"Loaded {loaded} signatures from {Path.GetFileName(sigFile)}");
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    App.Engine.Compile();
+                    _signaturesLoaded = true;
+                    TrimMemory();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error loading local databases: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error loading local databases: {ex.Message}");
-            }
+        }
+        finally
+        {
+            IsSignatureLoading = false;
         }
     }
 

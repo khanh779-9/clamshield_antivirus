@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
              xmlns:models="clr-namespace:clamshield_antivirus.Models"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:ComponentsViewModel}">
@@ -21,10 +22,10 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0">
-                <TextBlock Text="ClamAV Components" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Check the installation status of ClamAV core components" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="⟳ Refresh" Style="{StaticResource SecondaryButton}" 
+            <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.Refresh]}" Style="{StaticResource SecondaryButton}" 
                     Command="{Binding RefreshCommand}" IsEnabled="{Binding IsChecking, Converter={StaticResource InvBool}}"
                     VerticalAlignment="Center"/>
         </Grid>
@@ -93,11 +94,11 @@
                             <Border Grid.Row="1" Margin="0,10,0,0" Padding="12" CornerRadius="8" Background="{StaticResource SidebarBgBrush}"
                                     Visibility="{Binding IsInstalled, Converter={StaticResource InvBoolToVis}}">
                                 <StackPanel>
-                                    <TextBlock Text="🔧 Signature Database Update Guide" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}"/>
-                                    <TextBlock Text="1. Navigate to the 'Database' tab in the left sidebar menu." FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock Text="2. Click the 'Update Definitions' button to download the latest ClamAV signatures." FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock Text="3. The C# Engine will automatically compile, decompress, and load signatures into memory." FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                                    <TextBlock Text="Note: An offline backup signature containing standard EICAR test patterns is built-in by default." FontSize="11" Foreground="{StaticResource DimTextBrush}" FontStyle="Italic" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.GuideTitle]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.GuideStep1]}" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.GuideStep2]}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.GuideStep3]}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.GuideNote]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" FontStyle="Italic" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </Grid>

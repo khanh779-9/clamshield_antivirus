@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="550" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:DatabaseViewModel}">
@@ -18,8 +19,8 @@
 
         <Grid Grid.Row="0" Margin="0,0,0,16">
             <StackPanel>
-                <TextBlock Text="Database Update" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Update ClamAV virus definitions to detect the latest threats" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
         </Grid>
 
@@ -38,9 +39,9 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="📦" Style="{StaticResource CardIcon}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Updater Status" Style="{StaticResource CardSubtitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.UpdaterStatus]}" Style="{StaticResource CardSubtitle}"/>
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource CardTitle}" TextTrimming="CharacterEllipsis" Margin="0,4,0,0"/>
-                        <TextBlock Text="C# Update Engine Active" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.EngineActive]}" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -53,9 +54,9 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="⏰" Style="{StaticResource CardIcon}"/>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Last Database Update" Style="{StaticResource CardSubtitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.LastUpdate]}" Style="{StaticResource CardSubtitle}"/>
                         <TextBlock Text="{Binding LastUpdateTime}" Style="{StaticResource CardTitle}" Margin="0,4,0,0"/>
-                        <TextBlock Text="Definitions are active" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.DefinitionsActive]}" FontSize="11" Foreground="{StaticResource SuccessBrush}" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -73,7 +74,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Console Log Output" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.ConsoleLog]}" Style="{StaticResource SectionTitle}"/>
                 <TextBox Grid.Row="1" 
                          Text="{Binding ProgressLog, Mode=OneWay}" 
                          FontFamily="{StaticResource MonoFont}"
@@ -95,11 +96,11 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="ℹ️ Database Info" Style="{StaticResource SectionTitle}" Margin="0,0,0,12"/>
+                    <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.InfoTitle]}" Style="{StaticResource SectionTitle}" Margin="0,0,0,12"/>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <!-- Active Databases -->
-                            <TextBlock Text="Installed Databases" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.InstalledDbs]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,8"/>
                             <ItemsControl ItemsSource="{Binding DbVersions}" Margin="0,0,0,16">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -128,24 +129,24 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <TextBlock Text="CVD / CLD Database Format" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
-                            <TextBlock Text="Official ClamAV databases are compressed containers containing signature definitions (.ndb, .hdb, .ldb, etc.) along with verification files." FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.CvdFormatTitle]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.CvdFormatDesc]}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                            <TextBlock Text="The .info File Format" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
-                            <TextBlock Text="Specifies information about the database files unpacked from a CVD or CLD archive. Used to validate container correctness and parse offline signature metadata." FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.InfoFileFormatTitle]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.InfoFileFormatDesc]}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
 
                             <Border Padding="8" Background="{StaticResource SidebarBgBrush}" CornerRadius="4" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}" Margin="0,0,0,12">
                                 <StackPanel>
-                                    <TextBlock Text="Format: name:size:sha256" FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}"/>
-                                    <TextBlock Text="• name: The database file name." FontSize="11" Margin="0,4,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
-                                    <TextBlock Text="• size: The size in bytes." FontSize="11" Margin="0,2,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
-                                    <TextBlock Text="• sha256: SHA256 verification hash." FontSize="11" Margin="0,2,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.FormatLabel]}" FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.FormatName]}" FontSize="11" Margin="0,4,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.FormatSize]}" FontSize="11" Margin="0,2,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.FormatHash]}" FontSize="11" Margin="0,2,0,0" Foreground="{StaticResource SecondaryTextBrush}"/>
                                 </StackPanel>
                             </Border>
 
-                            <TextBlock Text="Update Guidelines" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
-                            <TextBlock Text="1. Click 'Update Definitions' to fetch the latest databases online." FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
-                            <TextBlock Text="2. The built-in C# engine will automatically decompress and load patterns into memory, bypassing the need for clamd/freshclam binaries." FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.UpdateGuidelines]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.Guideline1]}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.Guideline2]}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,4"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -177,13 +178,13 @@
                     <Ellipse Stroke="{StaticResource BorderBrush}" StrokeThickness="2" Opacity="0.5"/>
                     <Ellipse Stroke="{StaticResource AccentBrush}" StrokeThickness="2" StrokeDashArray="3 1.5"/>
                 </Grid>
-                <TextBlock Text="Downloading &amp; parsing database definitions. Please wait..." Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.ProgressText]}" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancel Update" Style="{StaticResource DangerButton}" Command="{Binding CancelUpdateCommand}" Margin="0,0,8,0"
+                <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.CancelUpdate]}" Style="{StaticResource DangerButton}" Command="{Binding CancelUpdateCommand}" Margin="0,0,8,0"
                         Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}"/>
-                <Button Content="Update Definitions" Style="{StaticResource AccentButton}" Command="{Binding UpdateCommand}" 
+                <Button Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Database.UpdateDefinitions]}" Style="{StaticResource AccentButton}" Command="{Binding UpdateCommand}" 
                         IsEnabled="{Binding CanUpdate}"
                         Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}"/>
             </StackPanel>

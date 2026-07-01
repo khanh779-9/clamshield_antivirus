@@ -27,6 +27,14 @@ public class ComponentsViewModel : ViewModelBase
         
         // Initial load
         _ = RefreshStatusAsync();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                _ = RefreshStatusAsync();
+            }
+        };
     }
 
     public async Task RefreshStatusAsync()

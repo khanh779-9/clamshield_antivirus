@@ -14,7 +14,7 @@ namespace clamshield_antivirus.Views
             
             // Set Text
             MessageText.Text = messageBoxText;
-            TitleText.Text = string.IsNullOrEmpty(caption) ? "Notification" : caption;
+            TitleText.Text = string.IsNullOrEmpty(caption) ? clamshield_antivirus.Helpers.LocalizationService.Instance["MessageBox.Info"] : caption;
 
             // Set Icon
             SetupIcon(icon);

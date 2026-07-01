@@ -95,10 +95,13 @@ namespace clamshield_antivirus.Views
         {
             Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
-                string title = "Real-Time Threat Blocked";
-                string line1 = $"File: {Path.GetFileName(filePath)}";
-                string line2 = $"Threat: {threatName}";
-                string line3 = "Action: Quarantined";
+                string title = clamshield_antivirus.Helpers.LocalizationService.Instance["Alert.Title"];
+                string fileLabel = clamshield_antivirus.Helpers.LocalizationService.Instance["Alert.FileLabel"];
+                string threatLabel = clamshield_antivirus.Helpers.LocalizationService.Instance["Alert.ThreatLabel"];
+                string actionLabel = clamshield_antivirus.Helpers.LocalizationService.Instance["Alert.ActionLabel"];
+                string line1 = $"{fileLabel} {Path.GetFileName(filePath)}";
+                string line2 = $"{threatLabel} {threatName}";
+                string line3 = actionLabel;
 
                 lock (_alertQueue)
                 {

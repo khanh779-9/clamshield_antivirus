@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
              xmlns:local="clr-namespace:clamshield_antivirus.Views"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:AuditViewModel}">
@@ -28,10 +29,10 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0">
-                <TextBlock Text="System Security Audit" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Check your Windows system security posture and get recommendations" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Audit.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Audit.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="⟳ Re-run Audit" Style="{StaticResource SecondaryButton}" 
+            <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Audit.Rerun]}" Style="{StaticResource SecondaryButton}" 
                     Command="{Binding RunAuditCommand}" IsEnabled="{Binding IsAuditing, Converter={StaticResource InvBool}}"
                     VerticalAlignment="Center"/>
         </Grid>
@@ -116,7 +117,7 @@
                                          FontFamily="{StaticResource MonoFont}" FontSize="11"
                                          Background="{StaticResource SidebarBgBrush}" Foreground="{StaticResource PrimaryTextBrush}"
                                          Padding="10,6" IsReadOnly="True" BorderThickness="1,1,0,1"/>
-                                <Button Grid.Column="1" Content="Copy" Style="{StaticResource SecondaryButton}" 
+                                <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Audit.Copy]}" Style="{StaticResource SecondaryButton}" 
                                         Padding="12,6" BorderThickness="0,1,1,1"
                                         Click="CopyCommand_Click" CommandParameter="{Binding FixCommand}"/>
                             </Grid>

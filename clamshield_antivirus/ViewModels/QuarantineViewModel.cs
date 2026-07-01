@@ -98,6 +98,14 @@ public class QuarantineViewModel : ViewModelBase
         DeleteSelectedCommand = new AsyncRelayCommand(DeleteCheckedEntriesAsync);
 
         _ = LoadEntriesAsync();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                CalculateStatistics();
+            }
+        };
     }
 
     public async Task LoadEntriesAsync()
@@ -143,7 +151,9 @@ public class QuarantineViewModel : ViewModelBase
         TotalSizeText = FileSizeConverter.FormatFileSize(totalBytes);
         
         int count = _allEntries.Count;
-        ItemCountText = count == 1 ? "1 item" : $"{count} items";
+        ItemCountText = count == 1 
+            ? LocalizationService.Instance["Quarantine.ItemCountOne"] 
+            : string.Format(LocalizationService.Instance["Quarantine.ItemCountMany"], count);
     }
 
     private async Task RestoreSelectedAsync()
@@ -158,11 +168,11 @@ public class QuarantineViewModel : ViewModelBase
             FilterEntries();
             CalculateStatistics();
             SelectedEntry = null;
-            ModernMessageBox.Show("File has been successfully restored to its original location.", "Restore Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(LocalizationService.Instance["Quarantine.RestoreSuccess"], LocalizationService.Instance["Quarantine.RestoreSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
         {
-            ModernMessageBox.Show("Failed to restore file. The original directory might be write-protected or unavailable.", "Restore Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show(LocalizationService.Instance["Quarantine.RestoreFailed"], LocalizationService.Instance["Quarantine.RestoreFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -171,8 +181,8 @@ public class QuarantineViewModel : ViewModelBase
         if (SelectedEntry == null) return;
 
         var result = ModernMessageBox.Show(
-            "Are you sure you want to permanently delete this quarantined file? This action cannot be undone.",
-            "Confirm Delete",
+            LocalizationService.Instance["Quarantine.ConfirmDelete"],
+            LocalizationService.Instance["Quarantine.ConfirmDeleteTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -189,7 +199,7 @@ public class QuarantineViewModel : ViewModelBase
             }
             else
             {
-                ModernMessageBox.Show("Failed to delete the file.", "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show(LocalizationService.Instance["Quarantine.DeleteFailed"], LocalizationService.Instance["Quarantine.DeleteFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -201,13 +211,13 @@ public class QuarantineViewModel : ViewModelBase
 
         if (oldEntries.Count == 0)
         {
-            ModernMessageBox.Show("No items are older than 30 days.", "Cleanup", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(LocalizationService.Instance["Quarantine.NoItemsOld"], LocalizationService.Instance["Quarantine.CleanupTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var result = ModernMessageBox.Show(
-            $"Are you sure you want to permanently delete all {oldEntries.Count} quarantined files older than 30 days?",
-            "Confirm Cleanup",
+            string.Format(LocalizationService.Instance["Quarantine.ConfirmCleanup"], oldEntries.Count),
+            LocalizationService.Instance["Quarantine.ConfirmCleanupTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -226,7 +236,7 @@ public class QuarantineViewModel : ViewModelBase
             FilterEntries();
             CalculateStatistics();
             SelectedEntry = null;
-            ModernMessageBox.Show($"Cleaned up {deletedCount} old entries.", "Cleanup Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Quarantine.CleanupSuccess"], deletedCount), LocalizationService.Instance["Quarantine.CleanupSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
@@ -235,8 +245,8 @@ public class QuarantineViewModel : ViewModelBase
         if (_allEntries.Count == 0) return;
 
         var result = ModernMessageBox.Show(
-            $"Are you sure you want to permanently delete ALL {_allEntries.Count} quarantined files? This action cannot be undone.",
-            "Confirm Delete All",
+            string.Format(LocalizationService.Instance["Quarantine.ConfirmDeleteAll"], _allEntries.Count),
+            LocalizationService.Instance["Quarantine.ConfirmDeleteAllTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -255,7 +265,7 @@ public class QuarantineViewModel : ViewModelBase
             FilterEntries();
             CalculateStatistics();
             SelectedEntry = null;
-            ModernMessageBox.Show($"Deleted {deletedCount} entries. Quarantine is now empty.", "Clear Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Quarantine.ClearSuccess"], deletedCount), LocalizationService.Instance["Quarantine.ClearSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
@@ -264,13 +274,13 @@ public class QuarantineViewModel : ViewModelBase
         var checkedEntries = Entries.Where(e => e.IsSelected).ToList();
         if (checkedEntries.Count == 0)
         {
-            ModernMessageBox.Show("No items selected. Check the box next to items you want to delete.", "Nothing Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(LocalizationService.Instance["Quarantine.NoItemsSelected"], LocalizationService.Instance["Quarantine.NothingSelectedTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var result = ModernMessageBox.Show(
-            $"Delete {checkedEntries.Count} selected quarantined file(s)? This action cannot be undone.",
-            "Confirm Delete Selected",
+            string.Format(LocalizationService.Instance["Quarantine.ConfirmDeleteSelected"], checkedEntries.Count),
+            LocalizationService.Instance["Quarantine.ConfirmDeleteSelectedTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -290,7 +300,7 @@ public class QuarantineViewModel : ViewModelBase
             CalculateStatistics();
             SelectedEntry = null;
             SelectAllChecked = false;
-            ModernMessageBox.Show($"Deleted {deletedCount} selected file(s).", "Delete Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Quarantine.DeleteSelectedSuccess"], deletedCount), LocalizationService.Instance["Quarantine.DeleteSelectedSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

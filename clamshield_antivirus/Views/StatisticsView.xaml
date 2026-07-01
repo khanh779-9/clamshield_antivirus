@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
              xmlns:conv="clr-namespace:clamshield_antivirus.Converters"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:StatisticsViewModel}">
@@ -59,10 +60,10 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0">
-                <TextBlock Text="Statistics Dashboard" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Monitor scanning activity and system threat metrics" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" Content="⟳ Refresh" Style="{StaticResource SecondaryButton}" 
+            <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Components.Refresh]}" Style="{StaticResource SecondaryButton}" 
                     Command="{Binding RefreshCommand}" IsEnabled="{Binding IsLoading, Converter={StaticResource InvBool}}"
                     VerticalAlignment="Center"/>
         </Grid>
@@ -78,9 +79,9 @@
                 <TextBlock Grid.Column="0" Text="🛡️" FontSize="36" VerticalAlignment="Center" Margin="0,0,20,0"/>
                 
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="SYSTEM PROTECTION STATUS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Opacity="0.8"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.StatusLabel]}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SecondaryTextBrush}" Opacity="0.8"/>
                     <TextBlock Text="{Binding ProtectionStatusText}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource PrimaryTextBrush}" Margin="0,4,0,0"/>
-                    <TextBlock Text="Real-time status based on ClamAV logs and quarantined files database." FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.StatusDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -91,14 +92,14 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="Protection Overview" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.Overview]}" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
 
             <Border Grid.Column="1" Background="{StaticResource SidebarBgBrush}" CornerRadius="8" Padding="3" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}">
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="Daily" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Daily', Mode=TwoWay}"/>
-                    <RadioButton Content="Weekly" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Weekly', Mode=TwoWay}"/>
-                    <RadioButton Content="Monthly" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Monthly', Mode=TwoWay}"/>
-                    <RadioButton Content="All Time" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='All Time', Mode=TwoWay}"/>
+                    <RadioButton Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TabDaily]}" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Daily', Mode=TwoWay}"/>
+                    <RadioButton Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TabWeekly]}" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Weekly', Mode=TwoWay}"/>
+                    <RadioButton Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TabMonthly]}" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='Monthly', Mode=TwoWay}"/>
+                    <RadioButton Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TabAllTime]}" Style="{StaticResource TimeframeTabStyle}" IsChecked="{Binding SelectedTimeframe, Converter={StaticResource TimeframeEqualsConverter}, ConverterParameter='All Time', Mode=TwoWay}"/>
                 </StackPanel>
             </Border>
         </Grid>
@@ -111,9 +112,9 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="🔍 TOTAL SCANS RUN" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TotalScans]}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
                     <TextBlock Grid.Row="1" Text="{Binding TotalScans}" Style="{StaticResource StatNumber}" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="Operations completed successfully" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.ScansCompleted]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
                 </Grid>
             </Border>
 
@@ -124,9 +125,9 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="📄 FILES SCANNED" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.FilesScanned]}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
                     <TextBlock Grid.Row="1" Text="{Binding FilesScanned, StringFormat='{}{0:N0}'}" Style="{StaticResource StatNumber}" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="Individual items inspected" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.ItemsInspected]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
                 </Grid>
             </Border>
 
@@ -137,11 +138,11 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="⚠️ THREATS DETECTED" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.ThreatsDetected]}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
                     <TextBlock Grid.Row="1" Text="{Binding ThreatsDetected}" Style="{StaticResource StatNumber}" 
                                Foreground="{Binding ThreatsDetected, Converter={StaticResource StatusToColor}, ConverterParameter='infected'}" 
                                VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="Identified malware threats isolated" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.ThreatsIsolated]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
                 </Grid>
             </Border>
 
@@ -152,9 +153,9 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="⏱️ AVERAGE SCAN TIME" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
+                    <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.AvgScanTime]}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource SecondaryTextBrush}"/>
                     <TextBlock Grid.Row="1" Text="{Binding AvgDurationText}" Style="{StaticResource StatNumber}" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="Minutes &amp; seconds per operation" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Statistics.TimePerScan]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
                 </Grid>
             </Border>
         </UniformGrid>

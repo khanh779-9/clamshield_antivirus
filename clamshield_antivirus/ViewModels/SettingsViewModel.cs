@@ -510,7 +510,7 @@ public class SettingsViewModel : ViewModelBase
     private void BrowseWatchFolder()
     {
         using var dialog = new System.Windows.Forms.FolderBrowserDialog();
-        dialog.Description = "Select folder to monitor";
+        dialog.Description = LocalizationService.Instance["Settings.SelectFolderDescription"];
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
         {
             NewWatchPath = dialog.SelectedPath;

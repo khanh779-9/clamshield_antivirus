@@ -74,7 +74,7 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.CoreEngineLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding EngineVersion}" Foreground="White"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.EngineVersionVal]}" Foreground="White"/>
                         </Grid>
 
                         <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
@@ -85,7 +85,7 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DatabaseInfo}" Foreground="White"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceVal]}" Foreground="White"/>
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -120,7 +120,7 @@
 
                         <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
                         
-                        <TextBlock Text="{Binding CopyrightText}" Foreground="{StaticResource DimTextBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.Copyright]}" Foreground="{StaticResource DimTextBrush}" FontSize="12" Margin="0,4,0,0"/>
                     </StackPanel>
                 </Border>
             </StackPanel>

@@ -36,11 +36,14 @@ public class ScanViewModel : ViewModelBase
             if (SetProperty(ref _isScanning, value))
             {
                 OnPropertyChanged(nameof(CanStartScan));
+                OnPropertyChanged(nameof(IsControlPanelVisible));
             }
         }
     }
 
     public bool CanStartScan => !IsScanning && Targets.Count > 0;
+    public bool HasTargets => Targets.Count > 0;
+    public bool IsControlPanelVisible => !IsScanning && !IsResultAvailable;
 
     public ScanProgress Progress
     {
@@ -56,6 +59,7 @@ public class ScanViewModel : ViewModelBase
             if (SetProperty(ref _result, value))
             {
                 OnPropertyChanged(nameof(IsResultAvailable));
+                OnPropertyChanged(nameof(IsControlPanelVisible));
             }
         }
     }
@@ -94,10 +98,15 @@ public class ScanViewModel : ViewModelBase
     public ICommand EicarTestCommand { get; }
     public ICommand QuarantineAllCommand { get; }
     public ICommand ExcludePathCommand { get; }
+    public ICommand DismissResultCommand { get; }
 
     public ScanViewModel()
     {
-        Targets.CollectionChanged += (s, e) => OnPropertyChanged(nameof(CanStartScan));
+        Targets.CollectionChanged += (s, e) =>
+        {
+            OnPropertyChanged(nameof(CanStartScan));
+            OnPropertyChanged(nameof(HasTargets));
+        };
 
         AddFileCommand = new RelayCommand(AddFile);
         AddFolderCommand = new RelayCommand(AddFolder);
@@ -125,9 +134,21 @@ public class ScanViewModel : ViewModelBase
                 ExcludePath(threat.FilePath);
             }
         });
+        DismissResultCommand = new RelayCommand(() =>
+        {
+            Result = null;
+        });
 
         LoadProfiles();
         UpdateBackendText();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                LoadProfiles();
+            }
+        };
     }
 
     private void UpdateBackendText()
@@ -139,12 +160,16 @@ public class ScanViewModel : ViewModelBase
     {
         Profiles.Clear();
         // Add manual scan profile
-        Profiles.Add(new ScanProfile { Id = "manual", Name = "No Profile (Manual Scan)", Description = "Configure targets manually" });
+        Profiles.Add(new ScanProfile { 
+            Id = "manual", 
+            Name = LocalizationService.Instance["Scan.ProfileManualName"], 
+            Description = LocalizationService.Instance["Scan.ProfileManualDesc"] 
+        });
         Profiles.Add(new ScanProfile
         {
             Id = "quick",
-            Name = "Quick Scan",
-            Description = "Scan system directories and user documents",
+            Name = LocalizationService.Instance["Scan.ProfileQuickName"],
+            Description = LocalizationService.Instance["Scan.ProfileQuickDesc"],
             TargetPaths = new() {
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp")
@@ -152,20 +177,34 @@ public class ScanViewModel : ViewModelBase
         });
         Profiles.Add(new ScanProfile
         {
+            Id = "smart",
+            Name = LocalizationService.Instance["Scan.ProfileSmartName"],
+            Description = LocalizationService.Instance["Scan.ProfileSmartDesc"],
+            TargetPaths = new string[] {
+                Environment.GetFolderPath(Environment.SpecialFolder.Startup),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads")
+            }.Where(Directory.Exists).ToList()
+        });
+        Profiles.Add(new ScanProfile
+        {
             Id = "full",
-            Name = "Full Scan",
-            Description = "Scan entire system",
+            Name = LocalizationService.Instance["Scan.ProfileFullName"],
+            Description = LocalizationService.Instance["Scan.ProfileFullDesc"],
             TargetPaths = new() { Path.GetPathRoot(Environment.SystemDirectory) ?? "C:\\" }
         });
 
-        SelectedProfile = Profiles[0];
+        string selectedId = _selectedProfile?.Id ?? "manual";
+        SelectedProfile = Profiles.FirstOrDefault(p => p.Id == selectedId) ?? Profiles[0];
     }
 
     private void AddFile()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Select File to Scan",
+            Title = LocalizationService.Instance["Scan.SelectFileTitle"],
             Multiselect = true
         };
 
@@ -186,7 +225,7 @@ public class ScanViewModel : ViewModelBase
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "Select Folder to Scan",
+            Title = LocalizationService.Instance["Scan.SelectFolderTitle"],
             Multiselect = true
         };
 
@@ -210,7 +249,7 @@ public class ScanViewModel : ViewModelBase
         _cancelRequested = false;
         IsScanning = true;
         Result = null;
-        Progress = new ScanProgress { StatusText = "Initializing scan..." };
+        Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusInitializing"] };
         _cts = new CancellationTokenSource();
         UpdateBackendText();
 
@@ -247,7 +286,7 @@ public class ScanViewModel : ViewModelBase
         catch (Exception ex)
         {
             if (!_cancelRequested)
-                Progress = new ScanProgress { StatusText = $"Error: {ex.Message}" };
+                Progress = new ScanProgress { StatusText = LocalizationService.Instance["Common.Error"] + ": " + ex.Message };
         }
         finally
         {
@@ -276,7 +315,7 @@ public class ScanViewModel : ViewModelBase
             ScanPath = string.Join(", ", Targets)
         };
 
-        Progress = new ScanProgress { StatusText = "Scan cancelled." };
+        Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusCancelled"] };
     }
 
     private async Task RunEicarTestAsync()
@@ -297,7 +336,7 @@ public class ScanViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            ModernMessageBox.Show($"Failed to generate EICAR test file: {ex.Message}", "EICAR Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Scan.EicarErrorDesc"], ex.Message), LocalizationService.Instance["Scan.EicarErrorTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -321,7 +360,7 @@ public class ScanViewModel : ViewModelBase
     {
         if (Result == null || Result.Threats.Count == 0) return;
 
-        Progress = new ScanProgress { StatusText = "Quarantining detected threats..." };
+        Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusQuarantining"] };
         IsScanning = true;
 
         var threats = Result.Threats.ToList();
@@ -345,7 +384,7 @@ public class ScanViewModel : ViewModelBase
         }
 
         IsScanning = false;
-        Progress = new ScanProgress { StatusText = $"Quarantined {quarantinedCount} threats." };
+        Progress = new ScanProgress { StatusText = string.Format(LocalizationService.Instance["Scan.StatusQuarantinedCount"], quarantinedCount) };
         OnPropertyChanged(nameof(Result)); // Notify binding updates
     }
 
@@ -356,7 +395,7 @@ public class ScanViewModel : ViewModelBase
         {
             exclusions.Add(path);
             App.Settings.Set("ExclusionPatterns", exclusions);
-            ModernMessageBox.Show($"Added to exclusions:\n{path}", "Path Excluded", MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Scan.ExcludedDesc"], path), LocalizationService.Instance["Scan.ExcludedTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 
 using clamshield_antivirus.Services;
 
@@ -14,6 +15,8 @@ public class RealTimeMonitor : IDisposable
     private readonly List<FileSystemWatcher> _watchers = new();
     private readonly object _lock = new();
     private Timer? _debounceTimer;
+    private Timer? _processScanTimer;
+    private readonly HashSet<int> _knownProcessIds = new();
     private bool _enabled;
     private int _totalScanned;
     private List<string> _exclusionPatterns = new();
@@ -82,7 +85,21 @@ public class RealTimeMonitor : IDisposable
             {
                 _pendingFiles.Clear();
             }
+            lock (_knownProcessIds)
+            {
+                _knownProcessIds.Clear();
+                try
+                {
+                    foreach (var p in System.Diagnostics.Process.GetProcesses())
+                    {
+                        _knownProcessIds.Add(p.Id);
+                        p.Dispose();
+                    }
+                }
+                catch { }
+            }
             _enabled = true;
+            _processScanTimer = new Timer(_ => CheckNewProcesses(), null, 1000, 1000);
         }
 
         ProtectionStarted?.Invoke();
@@ -99,7 +116,7 @@ public class RealTimeMonitor : IDisposable
                     {
                         Path = dir,
                         IncludeSubdirectories = includeSubdirectories,
-                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.LastAccess,
                         Filter = "*.*",
                         InternalBufferSize = 65536 // Max buffer size to prevent buffer overflow exceptions
                     };
@@ -152,6 +169,14 @@ public class RealTimeMonitor : IDisposable
 
         lock (_lock)
         {
+            _processScanTimer?.Dispose();
+            _processScanTimer = null;
+
+            lock (_knownProcessIds)
+            {
+                _knownProcessIds.Clear();
+            }
+
             lock (_pendingFiles)
             {
                 _pendingFiles.Clear();
@@ -165,9 +190,11 @@ public class RealTimeMonitor : IDisposable
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
         if (!_enabled) return;
+        QueueFileForScan(e.FullPath);
+    }
 
-        string filePath = e.FullPath;
-
+    private void QueueFileForScan(string filePath)
+    {
         // Filter by extension if optimized scanning is enabled
         if (!App.Settings.Get("RealtimeScanAllExtensions", false))
         {
@@ -198,6 +225,78 @@ public class RealTimeMonitor : IDisposable
             {
                 _debounceTimer = new Timer(_ => ProcessPendingFiles(), null, 500, Timeout.Infinite);
             }
+        }
+    }
+
+    private void CheckNewProcesses()
+    {
+        if (!_enabled) return;
+
+        IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hSnapshot == IntPtr.Zero) return;
+
+        try
+        {
+            var pe32 = new PROCESSENTRY32();
+            pe32.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
+
+            if (!Process32First(hSnapshot, ref pe32)) return;
+
+            var currentIds = new HashSet<int>();
+            var newProcessIds = new List<uint>();
+
+            lock (_knownProcessIds)
+            {
+                do
+                {
+                    int pid = (int)pe32.th32ProcessID;
+                    currentIds.Add(pid);
+
+                    if (!_knownProcessIds.Contains(pid))
+                    {
+                        newProcessIds.Add(pe32.th32ProcessID);
+                        _knownProcessIds.Add(pid);
+                    }
+                } while (Process32Next(hSnapshot, ref pe32));
+
+                // Clean up dead process IDs
+                _knownProcessIds.RemoveWhere(id => !currentIds.Contains(id));
+            }
+
+            // Scan the executable paths of new processes
+            foreach (uint pid in newProcessIds)
+            {
+                IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+                if (hProcess != IntPtr.Zero)
+                {
+                    try
+                    {
+                        var sb = new System.Text.StringBuilder(1024);
+                        uint size = (uint)sb.Capacity;
+                        if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
+                        {
+                            string path = sb.ToString();
+                            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                            {
+                                QueueFileForScan(path);
+                            }
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        CloseHandle(hProcess);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error checking running processes via native APIs: {ex.Message}");
+        }
+        finally
+        {
+            CloseHandle(hSnapshot);
         }
     }
 
@@ -355,4 +454,43 @@ public class RealTimeMonitor : IDisposable
         _debounceTimer?.Dispose();
         _concurrencySemaphore.Dispose();
     }
+
+    #region Win32 Process Snapshot P/Invoke
+    private const uint TH32CS_SNAPPROCESS = 0x00000002;
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct PROCESSENTRY32
+    {
+        public uint dwSize;
+        public uint cntUsage;
+        public uint th32ProcessID;
+        public IntPtr th32DefaultHeapID;
+        public uint th32ModuleID;
+        public uint cntThreads;
+        public uint th32ParentProcessID;
+        public int pcPriClassBase;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExeFile;
+    }
+    #endregion
 }

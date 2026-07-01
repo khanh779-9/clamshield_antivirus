@@ -10,17 +10,33 @@ namespace clamshield_antivirus.ViewModels;
 
 public class AuditItem : ViewModelBase
 {
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
+    public string TitleKey { get; set; } = string.Empty;
+    public string DescriptionKey { get; set; } = string.Empty;
+    public object[] DescriptionArgs { get; set; } = Array.Empty<object>();
     public string Status { get; set; } = "unknown"; // pass, warning, fail
-    public string Suggestion { get; set; } = string.Empty;
-    public string FixCommand { get; set; } = string.Empty;
+    public string SuggestionKey { get; set; } = string.Empty;
+    public string FixCommandKey { get; set; } = string.Empty;
+
+    public string Title => LocalizationService.Instance[TitleKey];
+    public string Description => DescriptionArgs != null && DescriptionArgs.Length > 0 
+        ? string.Format(LocalizationService.Instance[DescriptionKey], DescriptionArgs)
+        : LocalizationService.Instance[DescriptionKey];
+    public string Suggestion => LocalizationService.Instance[SuggestionKey];
+    public string FixCommand => LocalizationService.Instance[FixCommandKey];
+
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(Description));
+        OnPropertyChanged(nameof(Suggestion));
+        OnPropertyChanged(nameof(FixCommand));
+    }
 }
 
 public class AuditViewModel : ViewModelBase
 {
     private bool _isAuditing;
-    private string _summaryText = "Checking system security posture...";
+    private string _summaryText = string.Empty;
     private int _issuesCount;
 
     public ObservableCollection<AuditItem> AuditItems { get; } = new();
@@ -55,15 +71,41 @@ public class AuditViewModel : ViewModelBase
 
     public AuditViewModel()
     {
+        _summaryText = LocalizationService.Instance["Audit.CheckingPosture"];
         RunAuditCommand = new AsyncRelayCommand(RunAuditAsync);
 
         _ = RunAuditAsync();
+
+        LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                foreach (var item in AuditItems)
+                {
+                    item.Refresh();
+                }
+                UpdateSummaryText();
+            }
+        };
+    }
+
+    private void UpdateSummaryText()
+    {
+        if (IsAuditing)
+        {
+            SummaryText = LocalizationService.Instance["Audit.RunningChecks"];
+            return;
+        }
+
+        SummaryText = IssuesCount == 0 
+            ? LocalizationService.Instance["Audit.AllPassed"] 
+            : string.Format(LocalizationService.Instance["Audit.IssuesFound"], IssuesCount);
     }
 
     public async Task RunAuditAsync()
     {
         IsAuditing = true;
-        SummaryText = "Running security checks...";
+        SummaryText = LocalizationService.Instance["Audit.RunningChecks"];
         AuditItems.Clear();
         int issues = 0;
 
@@ -75,17 +117,18 @@ public class AuditViewModel : ViewModelBase
                 bool engineReady = App.Engine != null;
                 var clamItem = new AuditItem
                 {
-                    Title = "C# Antivirus Engine Status",
-                    Description = engineReady ? "C# Standalone Antivirus scan engine is initialized and active." : "C# Antivirus scan engine failed to initialize.",
+                    TitleKey = "Audit.EngineTitle",
+                    DescriptionKey = engineReady ? "Audit.EngineReady" : "Audit.EngineFailed",
                     Status = engineReady ? "pass" : "fail",
-                    Suggestion = engineReady ? "Excellent. The scan engine is ready to scan files." : "Restart the application to reinitialize the engine.",
-                    FixCommand = "Restart ClamUI"
+                    SuggestionKey = engineReady ? "Audit.EngineReadySuggestion" : "Audit.EngineFailedSuggestion",
+                    FixCommandKey = "Audit.EngineFix"
                 };
                 if (!engineReady) issues++;
 
                 // Check 2: ClamAV Database Definitions Health
                 bool definitionsActive = false;
-                string dbStatus = "Definitions missing.";
+                string dbDescKey = "Audit.DbMissing";
+                object[] dbArgs = Array.Empty<object>();
                 string localDbDir = Path.Combine(
                     AppDomain.CurrentDomain.BaseDirectory,
                     "database"
@@ -107,24 +150,26 @@ public class AuditViewModel : ViewModelBase
                         if (lastWrite > DateTime.Now.AddDays(-7))
                         {
                             definitionsActive = true;
-                            dbStatus = $"Definitions are active (Last updated: {lastWrite:yyyy-MM-dd HH:mm})";
+                            dbDescKey = "Audit.DbActive";
                         }
                         else
                         {
                             definitionsActive = false;
-                            dbStatus = $"Definitions are outdated (Last updated: {lastWrite:yyyy-MM-dd HH:mm})";
+                            dbDescKey = "Audit.DbOutdated";
                         }
+                        dbArgs = new object[] { lastWrite.ToString("yyyy-MM-dd HH:mm") };
                         break;
                     }
                 }
 
                 var dbItem = new AuditItem
                 {
-                    Title = "Virus Definitions Status",
-                    Description = dbStatus,
+                    TitleKey = "Audit.DbTitle",
+                    DescriptionKey = dbDescKey,
+                    DescriptionArgs = dbArgs,
                     Status = definitionsActive ? "pass" : "warning",
-                    Suggestion = definitionsActive ? "Virus signatures are up-to-date." : "Go to the Database tab and click 'Update Definitions' to download threat signatures.",
-                    FixCommand = "Database tab -> Update Definitions"
+                    SuggestionKey = definitionsActive ? "Audit.DbActiveSuggestion" : "Audit.DbOutdatedSuggestion",
+                    FixCommandKey = "Audit.DbFix"
                 };
                 if (!definitionsActive) issues++;
 
@@ -132,11 +177,11 @@ public class AuditViewModel : ViewModelBase
                 bool defenderRunning = IsServiceRunning("WinDefend");
                 var defenderItem = new AuditItem
                 {
-                    Title = "Windows Defender Security",
-                    Description = defenderRunning ? "Windows Defender Antivirus service is active." : "Windows Defender Antivirus service is stopped or disabled.",
+                    TitleKey = "Audit.DefenderTitle",
+                    DescriptionKey = defenderRunning ? "Audit.DefenderActive" : "Audit.DefenderInactive",
                     Status = defenderRunning ? "pass" : "warning",
-                    Suggestion = defenderRunning ? "System antivirus shield is active." : "Enable Windows Defender real-time protection to maintain active defense.",
-                    FixCommand = "powershell Start-Service WinDefend"
+                    SuggestionKey = defenderRunning ? "Audit.DefenderActiveSuggestion" : "Audit.DefenderInactiveSuggestion",
+                    FixCommandKey = "powershell Start-Service WinDefend"
                 };
                 if (!defenderRunning) issues++;
 
@@ -144,11 +189,11 @@ public class AuditViewModel : ViewModelBase
                 bool firewallRunning = IsServiceRunning("MpsSvc");
                 var firewallItem = new AuditItem
                 {
-                    Title = "Windows Firewall Status",
-                    Description = firewallRunning ? "Windows Firewall Service is active and managing traffic." : "Windows Firewall Service is stopped or inactive.",
+                    TitleKey = "Audit.FirewallTitle",
+                    DescriptionKey = firewallRunning ? "Audit.FirewallActive" : "Audit.FirewallInactive",
                     Status = firewallRunning ? "pass" : "fail",
-                    Suggestion = firewallRunning ? "Network boundary protection is active." : "Enable Windows Firewall to protect system ports from unauthorized connections.",
-                    FixCommand = "powershell Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True"
+                    SuggestionKey = firewallRunning ? "Audit.FirewallActiveSuggestion" : "Audit.FirewallInactiveSuggestion",
+                    FixCommandKey = "powershell Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True"
                 };
                 if (!firewallRunning) issues++;
 
@@ -163,13 +208,11 @@ public class AuditViewModel : ViewModelBase
             });
 
             IssuesCount = issues;
-            SummaryText = issues == 0 
-                ? "All security checks passed. System is protected." 
-                : $"{issues} security issues need attention.";
+            UpdateSummaryText();
         }
         catch (Exception ex)
         {
-            SummaryText = "Audit check aborted due to error.";
+            SummaryText = LocalizationService.Instance["Audit.AbortedError"];
             System.Diagnostics.Debug.WriteLine($"Failed executing system audit: {ex.Message}");
         }
         finally

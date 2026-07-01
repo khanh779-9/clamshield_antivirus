@@ -29,6 +29,45 @@ public class SystemTrayService : IDisposable
     {
         _mainWindow = mainWindow;
         InitializeTrayIcon();
+
+        // Update initial tray icon based on current security status
+        if (_mainWindow.DataContext is MainViewModel mainVm && 
+            mainVm.NavigationItems.Count > 0 && 
+            mainVm.NavigationItems[0].ViewModel is SecurityStatusViewModel statusVm)
+        {
+            UpdateIconByState(statusVm.StatusState);
+        }
+        else
+        {
+            UpdateIconByState("safe");
+        }
+
+        // Listen to language changes
+        clamshield_antivirus.Helpers.LocalizationService.Instance.PropertyChanged += (sender, args) =>
+        {
+            if (args.PropertyName == "Item[]")
+            {
+                UpdateTrayLanguage();
+            }
+        };
+    }
+
+    private void UpdateTrayLanguage()
+    {
+        if (_trayIcon == null) return;
+        _trayIcon.Text = clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Text"];
+        
+        if (_trayIcon.ContextMenuStrip != null)
+        {
+            var menu = _trayIcon.ContextMenuStrip;
+            if (menu.Items.Count >= 4)
+            {
+                menu.Items[0].Text = clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Open"];
+                menu.Items[1].Text = clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ScanNow"];
+                // Index 2 is separator
+                menu.Items[3].Text = clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Exit"];
+            }
+        }
     }
 
     private void InitializeTrayIcon()
@@ -36,7 +75,7 @@ public class SystemTrayService : IDisposable
         _trayIcon = new NotifyIcon
         {
             Icon = GetAppIcon(),
-            Text = "ClamUI - Antivirus Protection",
+            Text = clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Text"],
             Visible = true
         };
 
@@ -44,10 +83,10 @@ public class SystemTrayService : IDisposable
 
         var contextMenu = new ContextMenuStrip();
 
-        var openItem = new ToolStripMenuItem("Open ClamUI", null, (_, _) => ShowWindow());
-        var scanItem = new ToolStripMenuItem("Scan Now", null, async (_, _) => await QuickScanAsync());
+        var openItem = new ToolStripMenuItem(clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Open"], null, (_, _) => ShowWindow());
+        var scanItem = new ToolStripMenuItem(clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ScanNow"], null, async (_, _) => await QuickScanAsync());
         var separator = new ToolStripSeparator();
-        var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitApp());
+        var exitItem = new ToolStripMenuItem(clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Exit"], null, (_, _) => ExitApp());
 
         contextMenu.Items.Add(openItem);
         contextMenu.Items.Add(scanItem);
@@ -67,7 +106,7 @@ public class SystemTrayService : IDisposable
         _mainWindow.Topmost = false;
     }
 
-    private async Task QuickScanAsync()
+    private async System.Threading.Tasks.Task QuickScanAsync()
     {
         try
         {
@@ -93,8 +132,8 @@ public class SystemTrayService : IDisposable
                 System.Threading.Thread.Sleep(100);
                 _trayIcon?.ShowBalloonTip(
                     5000,
-                    "Scan Complete",
-                    $"{result.FilesScanned} files scanned. {result.ThreatsFound} threats found.",
+                    clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ScanComplete"],
+                    string.Format(clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ScanCompleteDesc"], result.FilesScanned, result.ThreatsFound),
                     result.ThreatsFound > 0 ? ToolTipIcon.Warning : ToolTipIcon.Info);
             });
         }
@@ -107,8 +146,8 @@ public class SystemTrayService : IDisposable
     private static void ExitApp()
     {
         var result = ModernMessageBox.Show(
-            "Are you sure you want to exit ClamUI? Real-time antivirus protection will be disabled.",
-            "Confirm Exit",
+            clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ConfirmExit"],
+            clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ConfirmExitTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -120,20 +159,95 @@ public class SystemTrayService : IDisposable
 
     public void SetStatus(string status)
     {
-        _trayIcon!.Text = $"ClamUI - {status}";
+        string fullText = $"{clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Text"]} - {status}";
+        if (fullText.Length > 63)
+        {
+            fullText = fullText.Substring(0, 60) + "...";
+        }
+        _trayIcon!.Text = fullText;
     }
 
     public void SetProtected(bool isProtected)
     {
-        _trayIcon!.Icon = isProtected ? GetAppIcon() : GetWarningIcon();
+        UpdateIconByState(isProtected ? "safe" : "warning");
+    }
+
+    public void UpdateIconByState(string state)
+    {
+        if (_trayIcon == null) return;
+
+        Icon? icon = null;
+        string statusText = string.Empty;
+
+        try
+        {
+            switch (state?.ToLowerInvariant())
+            {
+                case "safe":
+                    icon = GetManifestIcon("clam_ok.ico");
+                    statusText = clamshield_antivirus.Helpers.LocalizationService.Instance["SecurityStatus.SafeStatus"];
+                    break;
+                case "warning":
+                    icon = GetManifestIcon("clam_warning.ico");
+                    statusText = clamshield_antivirus.Helpers.LocalizationService.Instance["SecurityStatus.WarningStatus"];
+                    break;
+                case "danger":
+                    icon = GetManifestIcon("clam_error.ico");
+                    statusText = clamshield_antivirus.Helpers.LocalizationService.Instance["SecurityStatus.DangerStatus"];
+                    break;
+                case "loading":
+                    icon = GetManifestIcon("clam_info.ico");
+                    statusText = clamshield_antivirus.Helpers.LocalizationService.Instance["SecurityStatus.TitleLoading"];
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load state icon {state}: {ex.Message}");
+        }
+
+        if (icon != null)
+        {
+            _trayIcon.Icon = icon;
+        }
+        else
+        {
+            _trayIcon.Icon = GetAppIcon();
+        }
+
+        if (!string.IsNullOrEmpty(statusText))
+        {
+            string fullText = $"{clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.Text"]} - {statusText}";
+            if (fullText.Length > 63)
+            {
+                fullText = fullText.Substring(0, 60) + "...";
+            }
+            _trayIcon.Text = fullText;
+        }
+    }
+
+    private static Icon? GetManifestIcon(string fileName)
+    {
+        try
+        {
+            using var stream = System.Reflection.Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream($"clamshield_antivirus.Resources.{fileName}");
+            if (stream != null)
+                return new Icon(stream);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading manifest icon {fileName}: {ex.Message}");
+        }
+        return null;
     }
 
     public void ShowThreatNotification(string filePath, string threatName)
     {
         _trayIcon?.ShowBalloonTip(
             5000,
-            "Real-Time Threat Blocked",
-            $"File: {System.IO.Path.GetFileName(filePath)}\nThreat: {threatName}\nAction: Quarantined",
+            clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ThreatTitle"],
+            string.Format(clamshield_antivirus.Helpers.LocalizationService.Instance["Tray.ThreatDesc"], System.IO.Path.GetFileName(filePath), threatName),
             ToolTipIcon.Warning);
     }
 
@@ -149,11 +263,6 @@ public class SystemTrayService : IDisposable
         catch { }
         return Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location)
                ?? SystemIcons.Shield;
-    }
-
-    private static Icon GetWarningIcon()
-    {
-        return SystemIcons.Warning;
     }
 
     public void Dispose()

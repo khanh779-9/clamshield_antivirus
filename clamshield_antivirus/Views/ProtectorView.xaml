@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:clamshield_antivirus.ViewModels"
+             xmlns:helpers="clr-namespace:clamshield_antivirus.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="550" d:DesignWidth="700"
              d:DataContext="{d:DesignInstance Type=vm:ProtectorViewModel}">
@@ -17,8 +18,8 @@
 
         <Grid Grid.Row="0" Margin="0,0,0,16">
             <StackPanel>
-                <TextBlock Text="Real-Time Protector" Style="{StaticResource HeadingText}"/>
-                <TextBlock Text="Continuous system-wide filesystem protection running with Administrator privileges" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.Title]}" Style="{StaticResource HeadingText}"/>
+                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
             </StackPanel>
         </Grid>
 
@@ -41,11 +42,11 @@
                     <TextBlock Grid.Column="0" Text="🛡️" Style="{StaticResource CardIcon}" FontSize="36"/>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Real-Time Shield Status" Style="{StaticResource CardSubtitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.ShieldStatus]}" Style="{StaticResource CardSubtitle}"/>
                         <TextBlock Text="{Binding CurrentStatusText}" FontSize="18" FontWeight="Bold" Margin="0,4,0,0"
                                    Foreground="{Binding ProtectionStatus, Converter={StaticResource StatusToColor}}"
                                    Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Active System Shield (Admin)" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.AdminShield]}" Style="{StaticResource CardSubtitle}" Margin="0,2,0,0"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
@@ -67,7 +68,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Files Checked" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.FilesChecked]}" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="1" Text="{Binding TotalScanned}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource InfoBrush}" VerticalAlignment="Center"/>
                     </Grid>
 
@@ -78,7 +79,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Threats Blocked" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.ThreatsBlocked]}" Style="{StaticResource CardSubtitle}" VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="1" Text="{Binding ThreatsBlocked}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource ErrorBrush}" VerticalAlignment="Center"/>
                     </Grid>
                 </Grid>
@@ -96,7 +97,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Monitored Areas" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.MonitoredAreas]}" Style="{StaticResource SectionTitle}"/>
                 <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="12">
                     <Grid>
                         <ListBox ItemsSource="{Binding MonitoredPaths}"
@@ -120,8 +121,8 @@
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="16"
                                     Visibility="{Binding IsRunning, Converter={StaticResource InvBoolToVis}}">
                             <TextBlock Text="⚠️" FontSize="32" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Shield Offline" Style="{StaticResource CardTitle}" HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="15"/>
-                            <TextBlock Text="Enable Real-Time Protection to begin monitoring system drives." 
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.ShieldOffline]}" Style="{StaticResource CardTitle}" HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="15"/>
+                            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.ShieldOfflineDesc]}" 
                                        Style="{StaticResource CardSubtitle}" TextAlignment="Center" MaxWidth="200" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Grid>
@@ -133,7 +134,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Recent Activity Log" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Grid.Row="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Protector.ActivityLog]}" Style="{StaticResource SectionTitle}"/>
                 <ListBox Grid.Row="1" 
                          ItemsSource="{Binding ActivityLogs}"
                          Background="{StaticResource SidebarBgBrush}"

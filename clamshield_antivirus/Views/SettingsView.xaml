@@ -17,7 +17,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Title]}" Style="{StaticResource HeadingText}"/>
-            <TextBlock Text="Configure ClamUI behavior and integrations" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -51,8 +51,8 @@
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Explorer Integration" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Add or remove the 'Scan with ClamUI' option from the Windows Explorer right-click context menu for files, folders, and drives." 
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ExplorerIntegration]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ExplorerIntegrationDesc]}" 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -62,8 +62,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Context Menu" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock Text="Right-click files/folders and scan instantly" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ContextMenu]}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ContextMenuDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1" IsChecked="{Binding ContextMenuEnabled}" 
                                               Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
@@ -74,8 +74,8 @@
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Startup" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Automatically launch ClamUI when you sign in to Windows." 
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Startup]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.StartupDesc]}" 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -85,8 +85,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Launch at Startup" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock Text="Start ClamUI automatically when you log in" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.LaunchAtStartup]}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.LaunchAtStartupDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <ToggleButton Grid.Column="1" IsChecked="{Binding StartupEnabled}" 
                                               Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
@@ -97,8 +97,8 @@
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Scheduled Scanning" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Schedule automatic scans via Windows Task Scheduler. The app will scan all drives at the configured time." 
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScheduledScanning]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScheduledScanningDesc]}" 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -109,8 +109,8 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Enable Scheduled Scan" FontWeight="SemiBold" FontSize="13"/>
-                                        <TextBlock Text="Run scans automatically on a schedule" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.EnableScheduledScan]}" FontWeight="SemiBold" FontSize="13"/>
+                                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.EnableScheduledScanDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ToggleButton Grid.Column="1" IsChecked="{Binding ScheduleEnabled}" 
                                                   Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
@@ -121,7 +121,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Time:" FontSize="13" Style="{StaticResource CardSubtitle}" 
+                                    <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Time]}" FontSize="13" Style="{StaticResource CardSubtitle}" 
                                                VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <TextBox Grid.Column="1" Text="{Binding ScheduleTime}" Width="100" HorizontalAlignment="Left"/>
                                 </Grid>
@@ -133,17 +133,17 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <CheckBox Grid.Column="0" IsChecked="{Binding ScheduleWeekly}" 
-                                              Content="Weekly" Foreground="{StaticResource SecondaryTextBrush}"
+                                              Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Weekly]}" Foreground="{StaticResource SecondaryTextBrush}"
                                               VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <ComboBox Grid.Column="1" SelectedIndex="{Binding ScheduleDay}" Width="120" 
                                               Visibility="{Binding ScheduleWeekly, Converter={StaticResource BoolToVis}}">
-                                        <ComboBoxItem Content="Sunday"/>
-                                        <ComboBoxItem Content="Monday"/>
-                                        <ComboBoxItem Content="Tuesday"/>
-                                        <ComboBoxItem Content="Wednesday"/>
-                                        <ComboBoxItem Content="Thursday"/>
-                                        <ComboBoxItem Content="Friday"/>
-                                        <ComboBoxItem Content="Saturday"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Sunday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Monday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Tuesday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Wednesday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Thursday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Friday]}"/>
+                                        <ComboBoxItem Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Saturday]}"/>
                                     </ComboBox>
                                 </Grid>
                             </StackPanel>
@@ -153,8 +153,8 @@
 
                 <Border Style="{StaticResource SectionCard}">
                     <StackPanel>
-                        <TextBlock Text="Scan Options" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Configure limits, engines, and file types for scanning." 
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOptionsTitle]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOptionsDesc]}" 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -164,41 +164,41 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="Maximum File Size Limit" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock Text="Skip scanning files exceeding this size limit" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.MaxFileSizeLimit]}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.MaxFileSizeLimitDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBox Text="{Binding MaxFileSizeMB, UpdateSourceTrigger=PropertyChanged}" Width="80" TextAlignment="Right"/>
-                                    <TextBlock Text=" MB" Style="{StaticResource CardSubtitle}" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Mb]}" Style="{StaticResource CardSubtitle}" FontSize="13" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
                         <Separator Background="{StaticResource SeparatorBrush}" Margin="0,12"/>
-                        <TextBlock Text="Scan Engines &amp; Features" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,10"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanEngines]}" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,10"/>
                         <UniformGrid Columns="2" Rows="7">
-                            <CheckBox IsChecked="{Binding AllMatchMode}" Content="Deep Scan (All-Match Mode)" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding HeuristicAlerts}" Content="Heuristic Analysis" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding AlertPua}" Content="Detect PUA (Potentially Unwanted)" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseArchives}" Content="Scan Compressed Archives" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParsePe}" Content="Scan PE Executables" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParsePdf}" Content="Scan PDF Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseOle2}" Content="Scan MS Office Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseHtml}" Content="Scan HTML Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseMail}" Content="Scan Mail Files" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseElf}" Content="Scan Linux ELF Binaries" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseSwf}" Content="Scan Adobe Flash Files" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding ParseRtf}" Content="Scan RTF Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding AlertPdf}" Content="Alert Suspicious PDFs" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
-                            <CheckBox IsChecked="{Binding AlertMacros}" Content="Alert Macro Documents" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AllMatchMode}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.DeepScan]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding HeuristicAlerts}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Heuristic]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertPua}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.DetectPua]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseArchives}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanArchives]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParsePe}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanPe]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParsePdf}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanPdf]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseOle2}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanOle2]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseHtml}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanHtml]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseMail}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanMail]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseElf}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanElf]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseSwf}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanSwf]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding ParseRtf}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.ScanRtf]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertPdf}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.AlertPdf]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
+                            <CheckBox IsChecked="{Binding AlertMacros}" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.AlertMacros]}" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8" VerticalAlignment="Center"/>
                         </UniformGrid>
                     </StackPanel>
                 </Border>
 
                 <Border Style="{StaticResource SectionCard}" Margin="0,0,0,0">
                     <StackPanel>
-                        <TextBlock Text="Real-time Protection" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="Monitor folders for new or modified files and scan them automatically for threats." 
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.RealtimeProtection]}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.RealtimeProtectionDesc]}" 
                                    TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
 
                         <Border Style="{StaticResource InlineSettingRow}">
@@ -209,15 +209,18 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="Enable Real-time Monitoring" FontWeight="SemiBold" FontSize="13"/>
-                                        <TextBlock Text="Automatically scan new and modified files" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.EnableRealtime]}" FontWeight="SemiBold" FontSize="13"/>
+                                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.EnableRealtimeDesc]}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ToggleButton Grid.Column="1" IsChecked="{Binding RealtimeEnabled}" 
                                                   Style="{StaticResource ToggleSwitchStyle}" VerticalAlignment="Center"/>
                                 </Grid>
 
-                                <TextBlock Text="{Binding RealtimeScanned, StringFormat='Files scanned: {0}'}" FontSize="11" Foreground="{StaticResource DimTextBrush}" Margin="0,0,0,8"
-                                           Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}"/>
+                                <StackPanel Orientation="Horizontal" Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.FilesScannedLabel]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                                    <TextBlock Text=" " FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                                    <TextBlock Text="{Binding RealtimeScanned}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                                </StackPanel>
 
                                  <StackPanel Margin="0,4,0,12" Visibility="{Binding RealtimeEnabled, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.RealtimeScope]}" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,4,0,8"/>
@@ -254,7 +257,7 @@
 
                                 <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,10"/>
 
-                                <TextBlock Text="Watched Folders" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
+                                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.WatchedFolders]}" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding WatchFolders}" Margin="0,0,0,8">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -280,17 +283,17 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" Text="{Binding NewWatchPath, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <Button Grid.Column="1" Content="Browse" Margin="6,0,6,0"
+                                    <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Browse]}" Margin="6,0,6,0"
                                             Command="{Binding BrowseWatchFolderCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
-                                    <Button Grid.Column="2" Content="Add" 
+                                    <Button Grid.Column="2" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Add]}" 
                                             Command="{Binding AddWatchFolderCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
                                 </Grid>
 
                                 <Separator Background="{StaticResource SeparatorBrush}" Margin="0,0,0,10"/>
 
-                                <TextBlock Text="Exclusion Patterns" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
+                                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Exclusions]}" FontWeight="SemiBold" FontSize="13" Foreground="White" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding ExclusionPatterns}" Margin="0,0,0,8">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -315,7 +318,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBox Grid.Column="0" Text="{Binding NewExclusion, UpdateSourceTrigger=PropertyChanged}"/>
-                                    <Button Grid.Column="1" Content="Add" Margin="6,0,0,0"
+                                    <Button Grid.Column="1" Content="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.Add]}" Margin="6,0,0,0"
                                             Command="{Binding AddExclusionCommand}"
                                             Style="{StaticResource SecondaryButton}" Padding="12,4"/>
                                 </Grid>
