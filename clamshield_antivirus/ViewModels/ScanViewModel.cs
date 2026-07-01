@@ -362,7 +362,6 @@ public class ScanViewModel : ViewModelBase
         if (Result == null || Result.Threats.Count == 0) return;
 
         Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusQuarantining"] };
-        IsScanning = true;
 
         var threats = Result.Threats.ToList();
         int quarantinedCount = 0;
@@ -371,22 +370,30 @@ public class ScanViewModel : ViewModelBase
         {
             if (threat.Status == "Detected")
             {
-                var entry = await App.Quarantine.QuarantineFileAsync(threat.FilePath, threat.ThreatName);
-                if (entry != null)
+                try
                 {
-                    threat.Status = "Quarantined";
-                    quarantinedCount++;
+                    var entry = await App.Quarantine.QuarantineFileAsync(threat.FilePath, threat.ThreatName);
+                    if (entry != null)
+                    {
+                        threat.Status = "Quarantined";
+                        quarantinedCount++;
+                    }
+                    else
+                    {
+                        threat.Status = "Quarantine Failed";
+                    }
                 }
-                else
+                catch
                 {
                     threat.Status = "Quarantine Failed";
                 }
             }
         }
 
-        IsScanning = false;
         Progress = new ScanProgress { StatusText = string.Format(LocalizationService.Instance["Scan.StatusQuarantinedCount"], quarantinedCount) };
-        OnPropertyChanged(nameof(Result)); // Notify binding updates
+        var refreshed = new List<ThreatDetail>(Result.Threats);
+        Result.Threats.Clear();
+        foreach (var t in refreshed) Result.Threats.Add(t);
     }
 
     private void ExcludePath(string path)
