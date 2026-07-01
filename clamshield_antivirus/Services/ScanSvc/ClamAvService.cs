@@ -187,7 +187,7 @@ public class ClamAvService
                         });
                     }
 
-                    var threats = App.Engine.ScanFile(currentFile, scanOptions);
+                    var threats = App.Engine.ScanFile(currentFile, scanOptions, cancellationToken);
                     System.Diagnostics.Debug.WriteLine($"=== ScanAsync: {currentFile} found {threats.Count} threats ===");
                     if (threats.Count > 0)
                     {
@@ -320,25 +320,23 @@ public class ClamAvService
 
         try
         {
-            foreach (var file in Directory.GetFiles(dir))
+            foreach (var entry in Directory.EnumerateFileSystemEntries(dir))
             {
                 if (cancellationToken.IsCancellationRequested)
                     return;
 
-                if (!IsExcluded(file, exclusions))
-                    fileList.Add(file);
-            }
-
-            foreach (var subDir in Directory.GetDirectories(dir))
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    return;
-
-                if (IsExcluded(subDir, exclusions))
+                if (IsExcluded(entry, exclusions))
                     continue;
 
-                dirsScanned++;
-                GetFilesRecursively(subDir, fileList, ref dirsScanned, exclusions, cancellationToken);
+                if (File.Exists(entry))
+                {
+                    fileList.Add(entry);
+                }
+                else if (Directory.Exists(entry))
+                {
+                    dirsScanned++;
+                    GetFilesRecursively(entry, fileList, ref dirsScanned, exclusions, cancellationToken);
+                }
             }
         }
         catch

@@ -1131,6 +1131,10 @@ public class ClamAvEngine
     private readonly List<CdbSignature> _cdbSignatures = new();
     private readonly List<CrbSignature> _crbSignatures = new();
     private readonly Dictionary<string, long> _fpHashes = new(StringComparer.OrdinalIgnoreCase);
+    private bool HasHashSigs =>
+        _md5Signatures.Count > 0 || _sha256Signatures.Count > 0 || _sha1Signatures.Count > 0 ||
+        _sectionMd5Signatures.Count > 0 || _sectionSha256Signatures.Count > 0 || _sectionSha1Signatures.Count > 0 ||
+        _importHashSignatures.Count > 0 || _fpHashes.Count > 0;
     private readonly HashSet<string> _ignoredSigs = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _puaSignatureNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly AhoCorasickEngine _acEngine = new();
@@ -2289,7 +2293,9 @@ public class ClamAvEngine
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            string md5Hash, sha256Hash, sha1Hash;
+            string? md5Hash = null;
+            string? sha256Hash = null;
+            string? sha1Hash = null;
             byte[] fileBytes;
             long fileSize;
 
@@ -2300,40 +2306,44 @@ public class ClamAvEngine
                 fileBytes = new byte[scanLen];
                 stream.ReadExactly(fileBytes, 0, (int)scanLen);
 
-                using var incMd5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
-                using var incSha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-                using var incSha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-
-                incMd5.AppendData(fileBytes);
-                incSha256.AppendData(fileBytes);
-                incSha1.AppendData(fileBytes);
-
-                if (fileSize > scanLen)
+                if (HasHashSigs)
                 {
-                    byte[] buf = new byte[65536];
-                    int read, totalRead = 0;
-                    while ((read = stream.Read(buf, 0, buf.Length)) > 0)
+                    using var incMd5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
+                    using var incSha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    using var incSha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+
+                    incMd5.AppendData(fileBytes);
+                    incSha256.AppendData(fileBytes);
+                    incSha1.AppendData(fileBytes);
+
+                    if (fileSize > scanLen)
                     {
-                        incMd5.AppendData(buf, 0, read);
-                        incSha256.AppendData(buf, 0, read);
-                        incSha1.AppendData(buf, 0, read);
-                        totalRead += read;
-                        if (totalRead % (10 * 1024 * 1024) == 0) // every 10MB
-                            cancellationToken.ThrowIfCancellationRequested();
+                        byte[] buf = new byte[65536];
+                        int read, totalRead = 0;
+                        while ((read = stream.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            incMd5.AppendData(buf, 0, read);
+                            incSha256.AppendData(buf, 0, read);
+                            incSha1.AppendData(buf, 0, read);
+                            totalRead += read;
+                            if (totalRead % (10 * 1024 * 1024) == 0)
+                                cancellationToken.ThrowIfCancellationRequested();
+                        }
                     }
+
+                    md5Hash = ConvertToHexString(incMd5.GetHashAndReset());
+                    sha256Hash = ConvertToHexString(incSha256.GetHashAndReset());
+                    sha1Hash = ConvertToHexString(incSha1.GetHashAndReset());
                 }
-
-                md5Hash = ConvertToHexString(incMd5.GetHashAndReset());
-                sha256Hash = ConvertToHexString(incSha256.GetHashAndReset());
-                sha1Hash = ConvertToHexString(incSha1.GetHashAndReset());
             }
-
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] Scan {filePath} type={fileType} size={fileSize} md5={md5Hash} sigCount={_md5Signatures.Count}\n"); } catch { }
 
             if (threats.Count > 0 && !options.AllMatchMode) return;
 
-            if (IsFalsePositive(md5Hash, sha256Hash, sha1Hash, fileSize))
-                return;
+            if (HasHashSigs)
+            {
+                if (IsFalsePositive(md5Hash!, sha256Hash!, sha1Hash!, fileSize))
+                    return;
+            }
 
             if (fileType == ClamFileType.MSEXE && _crbSignatures.Count > 0)
             {
@@ -2344,8 +2354,11 @@ public class ClamAvEngine
                     return;
             }
 
-            CheckHashSignatures(threats, filePath, md5Hash, sha256Hash, sha1Hash, fileSize, options);
-            if (threats.Count > 0 && !options.AllMatchMode) return;
+            if (HasHashSigs)
+            {
+                CheckHashSignatures(threats, filePath, md5Hash!, sha256Hash!, sha1Hash!, fileSize, options);
+                if (threats.Count > 0 && !options.AllMatchMode) return;
+            }
 
             if (options.ParsePe && fileType == ClamFileType.MSEXE)
             {
@@ -2354,7 +2367,6 @@ public class ClamAvEngine
             }
 
             var acMatches = _acEngine.Search(fileBytes);
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] AC found {acMatches.Count} matches, hash thread {_md5Signatures.Count} sigs\n"); } catch { }
             foreach (var matchKey in acMatches)
             {
                 if (_staticSignatures.TryGetValue(matchKey, out var entry))
@@ -2757,10 +2769,8 @@ public class ClamAvEngine
         long fileSize,
         ScanOptions options)
     {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] CheckHash: md5={md5Hash} size={fileSize} md5Sigs={_md5Signatures.Count}\n"); } catch { }
         if (_md5Signatures.TryGetValue(Hash128.Parse(md5Hash), out var md5Entry))
         {
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "clamav_scan_log.txt"), $"[{DateTime.Now:HH:mm:ss}] MD5 MATCH: {md5Entry.Name} size={md5Entry.Size} ignored={IsIgnored(md5Entry.Name)} pua={ShouldSkipPua(md5Entry.Name, options)}\n"); } catch { }
             if ((md5Entry.Size < 0 || md5Entry.Size == fileSize) && !IsIgnored(md5Entry.Name) && !ShouldSkipPua(md5Entry.Name, options))
             {
                 threats.Add(new ThreatDetail
@@ -3541,71 +3551,24 @@ public class AhoCorasickEngine
 {
     private class AcNode
     {
-        private byte _singleKey;
-        private AcNode? _singleChild;
-        private KeyValuePair<byte, AcNode>[]? _childrenArray;
+        private AcNode?[]? _children;
 
-        public AcNode? GetChild(byte key)
-        {
-            if (_singleChild != null)
-            {
-                return _singleKey == key ? _singleChild : null;
-            }
-            if (_childrenArray != null)
-            {
-                int min = 0;
-                int max = _childrenArray.Length - 1;
-                while (min <= max)
-                {
-                    int mid = (min + max) / 2;
-                    byte midKey = _childrenArray[mid].Key;
-                    if (midKey == key) return _childrenArray[mid].Value;
-                    if (midKey < key) min = mid + 1;
-                    else max = mid - 1;
-                }
-            }
-            return null;
-        }
+        public AcNode? GetChild(byte key) =>
+            _children != null ? _children[key] : null;
 
         public void AddChild(byte key, AcNode child)
         {
-            if (_singleChild == null && _childrenArray == null)
-            {
-                _singleKey = key;
-                _singleChild = child;
-                return;
-            }
-
-            if (_singleChild != null)
-            {
-                _childrenArray = new KeyValuePair<byte, AcNode>[]
-                {
-                    new(_singleKey, _singleChild),
-                    new(key, child)
-                };
-                Array.Sort(_childrenArray, (x, y) => x.Key.CompareTo(y.Key));
-                _singleChild = null;
-                return;
-            }
-
-            var len = _childrenArray!.Length;
-            var newArray = new KeyValuePair<byte, AcNode>[len + 1];
-            Array.Copy(_childrenArray, newArray, len);
-            newArray[len] = new(key, child);
-            Array.Sort(newArray, (x, y) => x.Key.CompareTo(y.Key));
-            _childrenArray = newArray;
+            _children ??= new AcNode?[256];
+            _children[key] = child;
         }
 
         public IEnumerable<KeyValuePair<byte, AcNode>> GetChildren()
         {
-            if (_singleChild != null)
+            if (_children == null) yield break;
+            for (int i = 0; i < 256; i++)
             {
-                yield return new KeyValuePair<byte, AcNode>(_singleKey, _singleChild);
-            }
-            else if (_childrenArray != null)
-            {
-                foreach (var kvp in _childrenArray)
-                    yield return kvp;
+                if (_children[i] != null)
+                    yield return new KeyValuePair<byte, AcNode>((byte)i, _children[i]!);
             }
         }
 

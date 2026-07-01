@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using System.Management;
 
 using clamshield_antivirus.Services;
 
@@ -13,35 +14,37 @@ namespace clamshield_antivirus.Services.ScanSvc;
 public class RealTimeMonitor : IDisposable
 {
     private readonly List<FileSystemWatcher> _watchers = new();
-    private readonly object _lock = new();
     private Timer? _debounceTimer;
-    private Timer? _processScanTimer;
-    private readonly HashSet<int> _knownProcessIds = new();
+    private ManagementEventWatcher? _processWatcher;
     private bool _enabled;
     private int _totalScanned;
     private List<string> _exclusionPatterns = new();
 
-    // Fields for refined real-time scanning
-    private readonly Dictionary<string, DateTime> _pendingFiles = new(StringComparer.OrdinalIgnoreCase);
-    private readonly SemaphoreSlim _concurrencySemaphore = new(8);
+    private readonly Queue<string> _pendingFiles = new();
+    private readonly HashSet<string> _pendingSet = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _cooldownCache = new(StringComparer.OrdinalIgnoreCase);
+    private const int PendingMax = 2000;
+    private const int CooldownMax = 5000;
 
-    private static readonly HashSet<string> OptimizedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private readonly SemaphoreSlim _concurrencySemaphore = new(2);
+
+    private static readonly HashSet<string> TargetExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".dll", ".sys", ".scr", ".pif", ".com", ".cpl", ".ocx", ".ax", // PE binaries
-        ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".sh", // Scripts / Batch
-        ".msi", ".msp", ".mst", // Installers
-        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".docm", ".xlsm", ".pptm", ".rtf", // Office & PDF documents
-        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".cab", ".iso", ".img", // Archives & Disk images
-        ".jar", ".class", // Java
-        ".htm", ".html", ".xhtml", // Web documents
-        ".lnk", ".inf", ".reg" // Windows files
+        ".exe", ".dll", ".sys", ".scr", ".pif", ".com", ".cpl", ".ocx", ".ax",
+        ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".sh",
+        ".msi", ".msp", ".mst",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".docm", ".xlsm", ".pptm", ".rtf",
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".cab", ".iso", ".img",
+        ".jar", ".class",
+        ".htm", ".html", ".xhtml",
+        ".lnk", ".inf", ".reg"
     };
 
     private readonly HashSet<string> _customExtensions = new(StringComparer.OrdinalIgnoreCase);
 
     public void UpdateCustomExtensions(string customExtensionsStr)
     {
-        lock (_lock)
+        lock (_customExtensions)
         {
             _customExtensions.Clear();
             if (string.IsNullOrWhiteSpace(customExtensionsStr)) return;
@@ -58,98 +61,176 @@ public class RealTimeMonitor : IDisposable
 
     public bool IsRunning => _enabled;
     public int TotalScanned => _totalScanned;
+    public int PendingCount { get; private set; }
+
     public List<string> ActiveMonitoredPaths
     {
         get
         {
-            lock (_watchers)
-            {
-                return _watchers.Select(w => w.Path).ToList();
-            }
+            lock (_watchers) { return _watchers.Select(w => w.Path).ToList(); }
         }
     }
 
     public event Action<string>? FileScanned;
-    public event Action<string, string>? ThreatDetected; // (filePath, threatName)
+    public event Action<string, string>? ThreatDetected;
     public event Action? ProtectionStarted;
     public event Action? ProtectionStopped;
 
-    public async Task StartAsync(IEnumerable<string> directories, bool includeSubdirectories = false, List<string>? exclusionPatterns = null)
+    public Task StartAsync(IEnumerable<string> directories, bool includeSubdirectories = false, List<string>? exclusionPatterns = null)
     {
         _exclusionPatterns = exclusionPatterns ?? new List<string>();
-        Stop();
-
-        lock (_lock)
+        return Task.Run(() =>
         {
-            lock (_pendingFiles)
-            {
-                _pendingFiles.Clear();
-            }
-            lock (_knownProcessIds)
-            {
-                _knownProcessIds.Clear();
-                try
-                {
-                    foreach (var p in System.Diagnostics.Process.GetProcesses())
-                    {
-                        _knownProcessIds.Add(p.Id);
-                        p.Dispose();
-                    }
-                }
-                catch { }
-            }
+            Stop();
+
             _enabled = true;
-            _processScanTimer = new Timer(_ => CheckNewProcesses(), null, 1000, 1000);
-        }
 
-        ProtectionStarted?.Invoke();
-
-        await Task.Run(() =>
-        {
             foreach (var dir in directories)
             {
                 if (!Directory.Exists(dir)) continue;
-
                 try
                 {
                     var watcher = new FileSystemWatcher
                     {
                         Path = dir,
                         IncludeSubdirectories = includeSubdirectories,
-                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.LastAccess,
+                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
                         Filter = "*.*",
-                        InternalBufferSize = 65536 // Max buffer size to prevent buffer overflow exceptions
+                        InternalBufferSize = 65536
                     };
-
                     watcher.Created += OnFileChanged;
                     watcher.Changed += OnFileChanged;
                     watcher.Error += OnWatcherError;
                     watcher.EnableRaisingEvents = true;
-
-                    lock (_watchers)
-                    {
-                        _watchers.Add(watcher);
-                    }
+                    lock (_watchers) { _watchers.Add(watcher); }
                 }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to start watcher for {dir}: {ex.Message}");
-                }
+                catch { }
             }
+
+            _ = FireProtectionStartedAsync();
         });
     }
 
-    public async Task StartSystemWideAsync(List<string>? exclusionPatterns = null)
+    public Task StartSystemWideAsync(List<string>? exclusionPatterns = null)
     {
-        await Task.Run(async () =>
+        _exclusionPatterns = exclusionPatterns ?? new List<string>();
+        return Task.Run(() =>
         {
-            var fixedDrives = DriveInfo.GetDrives()
-                .Where(d => d.IsReady && d.DriveType == DriveType.Fixed)
-                .Select(d => d.RootDirectory.FullName)
-                .ToList();
+            Stop();
 
-            await StartAsync(fixedDrives, includeSubdirectories: true, exclusionPatterns: exclusionPatterns);
+            string[] fixedDrives;
+            try
+            {
+                fixedDrives = DriveInfo.GetDrives()
+                    .Where(d => d.DriveType == DriveType.Fixed && d.RootDirectory.FullName != null)
+                    .Select(d => d.RootDirectory.FullName)
+                    .ToArray();
+            }
+            catch { fixedDrives = new[] { "C:\\" }; }
+
+            _enabled = true;
+
+            foreach (var root in fixedDrives)
+            {
+                try
+                {
+                    var watcher = new FileSystemWatcher
+                    {
+                        Path = root,
+                        IncludeSubdirectories = true,
+                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                        Filter = "*.*",
+                        InternalBufferSize = 65536
+                    };
+                    watcher.Created += OnFileChanged;
+                    watcher.Changed += OnFileChanged;
+                    watcher.Error += OnWatcherError;
+                    watcher.EnableRaisingEvents = true;
+                    lock (_watchers) { _watchers.Add(watcher); }
+                }
+                catch { }
+            }
+
+            StartProcessMonitor();
+            _ = FireProtectionStartedAsync();
         });
+    }
+
+    private Task FireProtectionStartedAsync()
+    {
+        return Task.Run(async () =>
+        {
+            try
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    ProtectionStarted?.Invoke());
+            }
+            catch { }
+        });
+    }
+
+    private void StartProcessMonitor()
+    {
+        try
+        {
+            var query = new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace");
+            _processWatcher = new ManagementEventWatcher(query);
+            _processWatcher.EventArrived += OnProcessStarted;
+            _processWatcher.Start();
+        }
+        catch { }
+    }
+
+    private void OnProcessStarted(object sender, EventArrivedEventArgs e)
+    {
+        if (!_enabled) return;
+        try
+        {
+            uint pid = (uint)e.NewEvent.Properties["ProcessID"].Value;
+            string? processName = e.NewEvent.Properties["ProcessName"].Value as string;
+            if (string.IsNullOrEmpty(processName)) return;
+
+            string? fullPath = ResolveProcessPath(pid, processName);
+            if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath))
+                EnqueueFile(fullPath);
+        }
+        catch { }
+    }
+
+    private static string? ResolveProcessPath(uint pid, string? processName)
+    {
+        if (string.IsNullOrEmpty(processName)) return null;
+
+        IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (hProcess != IntPtr.Zero)
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
+                    return sb.ToString();
+            }
+            finally { CloseHandle(hProcess); }
+        }
+
+        return SearchPathEnvironment(processName);
+    }
+
+    private static string? SearchPathEnvironment(string fileName)
+    {
+        try
+        {
+            string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (pathEnv == null) return null;
+            foreach (var p in pathEnv.Split(Path.PathSeparator))
+            {
+                string full = Path.Combine(p.Trim(), fileName);
+                if (File.Exists(full)) return full;
+            }
+        }
+        catch { }
+        return null;
     }
 
     public void Stop()
@@ -159,221 +240,115 @@ public class RealTimeMonitor : IDisposable
 
         lock (_watchers)
         {
-            foreach (var w in _watchers)
-            {
-                w.EnableRaisingEvents = false;
-                w.Dispose();
-            }
+            foreach (var w in _watchers) { w.EnableRaisingEvents = false; w.Dispose(); }
             _watchers.Clear();
         }
 
-        lock (_lock)
-        {
-            _processScanTimer?.Dispose();
-            _processScanTimer = null;
-
-            lock (_knownProcessIds)
-            {
-                _knownProcessIds.Clear();
-            }
-
-            lock (_pendingFiles)
-            {
-                _pendingFiles.Clear();
-            }
-        }
+        try { _processWatcher?.Stop(); } catch { }
+        _processWatcher?.Dispose();
+        _processWatcher = null;
 
         _debounceTimer?.Dispose();
         _debounceTimer = null;
+
+        lock (_pendingFiles) { _pendingFiles.Clear(); _pendingSet.Clear(); }
+        lock (_cooldownCache) { _cooldownCache.Clear(); }
     }
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
         if (!_enabled) return;
-        QueueFileForScan(e.FullPath);
-    }
+        if (IsExcluded(e.FullPath)) return;
+        if (IsInCooldown(e.FullPath)) return;
 
-    private void QueueFileForScan(string filePath)
-    {
-        // Filter by extension if optimized scanning is enabled
-        if (!App.Settings.Get("RealtimeScanAllExtensions", false))
+        bool scanAll = App.Settings.Get("RealtimeScanAllExtensions", false);
+        if (!scanAll)
         {
-            string ext = Path.GetExtension(filePath);
+            string ext = Path.GetExtension(e.FullPath);
             if (string.IsNullOrEmpty(ext)) return;
-
-            bool match = OptimizedExtensions.Contains(ext);
-            if (!match)
+            if (!TargetExtensions.Contains(ext))
             {
-                lock (_lock)
-                {
-                    match = _customExtensions.Contains(ext);
-                }
+                lock (_customExtensions) { if (!_customExtensions.Contains(ext)) return; }
             }
-
-            if (!match) return;
         }
 
+        EnqueueFile(e.FullPath);
+    }
+
+    private bool IsInCooldown(string path)
+    {
+        lock (_cooldownCache) { return _cooldownCache.Contains(path); }
+    }
+
+    private void EnqueueFile(string path)
+    {
         lock (_pendingFiles)
         {
-            _pendingFiles[filePath] = DateTime.UtcNow;
+            if (_pendingSet.Contains(path)) return;
+            if (_pendingFiles.Count >= PendingMax) return;
+
+            _pendingFiles.Enqueue(path);
+            _pendingSet.Add(path);
+            PendingCount = _pendingFiles.Count;
         }
 
-        lock (_lock)
+        lock (this)
         {
-            if (!_enabled) return;
             if (_debounceTimer == null)
-            {
-                _debounceTimer = new Timer(_ => ProcessPendingFiles(), null, 500, Timeout.Infinite);
-            }
+                _debounceTimer = new Timer(_ => DrainQueue(), null, 1000, Timeout.Infinite);
         }
     }
 
-    private void CheckNewProcesses()
+    private void DrainQueue()
     {
-        if (!_enabled) return;
-
-        IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (hSnapshot == IntPtr.Zero) return;
-
-        try
-        {
-            var pe32 = new PROCESSENTRY32();
-            pe32.dwSize = (uint)Marshal.SizeOf(typeof(PROCESSENTRY32));
-
-            if (!Process32First(hSnapshot, ref pe32)) return;
-
-            var currentIds = new HashSet<int>();
-            var newProcessIds = new List<uint>();
-
-            lock (_knownProcessIds)
-            {
-                do
-                {
-                    int pid = (int)pe32.th32ProcessID;
-                    currentIds.Add(pid);
-
-                    if (!_knownProcessIds.Contains(pid))
-                    {
-                        newProcessIds.Add(pe32.th32ProcessID);
-                        _knownProcessIds.Add(pid);
-                    }
-                } while (Process32Next(hSnapshot, ref pe32));
-
-                // Clean up dead process IDs
-                _knownProcessIds.RemoveWhere(id => !currentIds.Contains(id));
-            }
-
-            // Scan the executable paths of new processes
-            foreach (uint pid in newProcessIds)
-            {
-                IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-                if (hProcess != IntPtr.Zero)
-                {
-                    try
-                    {
-                        var sb = new System.Text.StringBuilder(1024);
-                        uint size = (uint)sb.Capacity;
-                        if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
-                        {
-                            string path = sb.ToString();
-                            if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                            {
-                                QueueFileForScan(path);
-                            }
-                        }
-                    }
-                    catch { }
-                    finally
-                    {
-                        CloseHandle(hProcess);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error checking running processes via native APIs: {ex.Message}");
-        }
-        finally
-        {
-            CloseHandle(hSnapshot);
-        }
-    }
-
-    private void ProcessPendingFiles()
-    {
-        var filesToScan = new List<string>();
-        var now = DateTime.UtcNow;
-
+        string[] batch;
         lock (_pendingFiles)
         {
-            var keysToRemove = new List<string>();
-            foreach (var kvp in _pendingFiles)
-            {
-                if ((now - kvp.Value).TotalMilliseconds >= 1000)
-                {
-                    filesToScan.Add(kvp.Key);
-                    keysToRemove.Add(kvp.Key);
-                }
-            }
-            foreach (var key in keysToRemove)
-            {
-                _pendingFiles.Remove(key);
-            }
+            batch = _pendingFiles.ToArray();
+            _pendingFiles.Clear();
+            _pendingSet.Clear();
+            PendingCount = 0;
         }
 
-        foreach (var file in filesToScan)
+        foreach (var file in batch)
         {
             _ = Task.Run(async () =>
             {
                 await _concurrencySemaphore.WaitAsync();
-                try
-                {
-                    await ScanFileAsync(file);
-                }
-                finally
-                {
-                    _concurrencySemaphore.Release();
-                }
+                try { await ScanFileAsync(file); }
+                finally { _concurrencySemaphore.Release(); }
             });
         }
 
-        lock (_lock)
+        lock (this)
         {
             _debounceTimer?.Dispose();
             _debounceTimer = null;
 
             bool hasPending;
-            lock (_pendingFiles)
-            {
-                hasPending = _pendingFiles.Count > 0;
-            }
-
+            lock (_pendingFiles) { hasPending = _pendingFiles.Count > 0; }
             if (hasPending && _enabled)
-            {
-                _debounceTimer = new Timer(_ => ProcessPendingFiles(), null, 500, Timeout.Infinite);
-            }
+                _debounceTimer = new Timer(_ => DrainQueue(), null, 1000, Timeout.Infinite);
         }
     }
 
     private async Task ScanFileAsync(string file)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        if (!_enabled) return;
+        if (!File.Exists(file)) return;
+        if (IsExcluded(file)) return;
+
+        AddCooldown(file);
+
         try
         {
-            if (!File.Exists(file)) return;
-            if (IsExcluded(file)) return;
-
             FileScanned?.Invoke(file);
 
             var progress = new Progress<Models.ScanProgress>(_ => { });
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var result = await App.ClamAv.ScanAsync(new List<string> { file }, null, progress, cts.Token);
 
-            if (cts.Token.IsCancellationRequested || result.Status == "Cancelled")
-            {
-                System.Diagnostics.Debug.WriteLine($"Scan for {file} was cancelled or timed out.");
-                return;
-            }
+            if (result.Status == "Cancelled") return;
 
             Interlocked.Increment(ref _totalScanned);
 
@@ -381,20 +356,22 @@ public class RealTimeMonitor : IDisposable
             {
                 var threat = result.Threats.FirstOrDefault();
                 string threatName = threat?.ThreatName ?? "Unknown Threat";
-
-                // Quarantine the threat automatically
                 await App.Quarantine.QuarantineFileAsync(file, threatName);
-
                 ThreatDetected?.Invoke(file, threatName);
             }
         }
-        catch (OperationCanceledException)
+        catch { }
+    }
+
+    private void AddCooldown(string path)
+    {
+        lock (_cooldownCache)
         {
-            System.Diagnostics.Debug.WriteLine($"Scan for {file} timed out.");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error scanning file {file}: {ex.Message}");
+            _cooldownCache.Add(path);
+            if (_cooldownCache.Count > CooldownMax)
+            {
+                _cooldownCache.Clear();
+            }
         }
     }
 
@@ -402,11 +379,9 @@ public class RealTimeMonitor : IDisposable
     {
         if (string.IsNullOrEmpty(path)) return true;
 
-        // Default system exclusions
         if (path.IndexOf(@"\Windows\", StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (path.IndexOf(@"\$Recycle.Bin", StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (path.IndexOf(@"\System Volume Information", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-        if (path.IndexOf(@"\AppData\Local\Temp", StringComparison.OrdinalIgnoreCase) >= 0) return true;
         if (path.IndexOf(@"\AppData\Local\Microsoft\Windows\INetCache", StringComparison.OrdinalIgnoreCase) >= 0) return true;
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
         if (path.IndexOf(baseDir + "quarantine", StringComparison.OrdinalIgnoreCase) >= 0) return true;
@@ -417,7 +392,6 @@ public class RealTimeMonitor : IDisposable
         if (fileName.Equals("swapfile.sys", StringComparison.OrdinalIgnoreCase)) return true;
         if (fileName.Equals("dumpstack.log", StringComparison.OrdinalIgnoreCase)) return true;
 
-        // Settings-based exclusions (same logic as ClamAvService)
         foreach (var pattern in _exclusionPatterns)
         {
             if (string.IsNullOrEmpty(pattern)) continue;
@@ -445,7 +419,6 @@ public class RealTimeMonitor : IDisposable
 
     private static void OnWatcherError(object sender, ErrorEventArgs e)
     {
-        System.Diagnostics.Debug.WriteLine($"FileWatcher error: {e.GetException().Message}");
     }
 
     public void Dispose()
@@ -455,42 +428,16 @@ public class RealTimeMonitor : IDisposable
         _concurrencySemaphore.Dispose();
     }
 
-    #region Win32 Process Snapshot P/Invoke
-    private const uint TH32CS_SNAPPROCESS = 0x00000002;
+    #region Win32 P/Invoke
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool CloseHandle(IntPtr hObject);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, System.Text.StringBuilder lpExeName, ref uint lpdwSize);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private struct PROCESSENTRY32
-    {
-        public uint dwSize;
-        public uint cntUsage;
-        public uint th32ProcessID;
-        public IntPtr th32DefaultHeapID;
-        public uint th32ModuleID;
-        public uint cntThreads;
-        public uint th32ParentProcessID;
-        public int pcPriClassBase;
-        public uint dwFlags;
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-        public string szExeFile;
-    }
     #endregion
 }

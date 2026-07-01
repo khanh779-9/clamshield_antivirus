@@ -24,6 +24,7 @@ public class ScanViewModel : ViewModelBase
     private string _backendText = "Backend: clamscan (standalone)";
     private CancellationTokenSource? _cts;
     private volatile bool _cancelRequested;
+    private int _scanVersion;
 
     public ObservableCollection<string> Targets { get; } = new();
     public ObservableCollection<ScanProfile> Profiles { get; } = new();
@@ -248,11 +249,13 @@ public class ScanViewModel : ViewModelBase
     {
         if (Targets.Count == 0) return;
 
+        int version = Interlocked.Increment(ref _scanVersion);
         _cancelRequested = false;
         IsScanning = true;
         Result = null;
         Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusInitializing"] };
         _cts = new CancellationTokenSource();
+        var token = _cts.Token;
         UpdateBackendText();
 
         var progressReporter = new Progress<ScanProgress>(p =>
@@ -264,12 +267,12 @@ public class ScanViewModel : ViewModelBase
         try
         {
             var scanTargets = Targets.ToList();
-            var scanResult = await App.ClamAv.ScanAsync(scanTargets, SelectedProfile, progressReporter, _cts.Token);
-            if (_cancelRequested) return;
+            var scanResult = await App.ClamAv.ScanAsync(scanTargets, SelectedProfile, progressReporter, token);
+
+            if (version != _scanVersion || _cancelRequested) return;
 
             Result = scanResult;
 
-            // Log to historical database
             var logEntry = new LogEntry
             {
                 Type = "Scan",
@@ -285,14 +288,18 @@ public class ScanViewModel : ViewModelBase
                 await QuarantineAllAsync();
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Cancelled by user — UI already handled in CancelScan()
+        }
         catch (Exception ex)
         {
-            if (!_cancelRequested)
+            if (version == _scanVersion && !_cancelRequested)
                 Progress = new ScanProgress { StatusText = LocalizationService.Instance["Common.Error"] + ": " + ex.Message };
         }
         finally
         {
-            if (!_cancelRequested)
+            if (version == _scanVersion)
             {
                 IsScanning = false;
                 _cts = null;
@@ -305,17 +312,9 @@ public class ScanViewModel : ViewModelBase
         if (_cts == null || _cancelRequested) return;
         _cancelRequested = true;
         _cts.Cancel();
+        Interlocked.Increment(ref _scanVersion);
 
         IsScanning = false;
-        _cts = null;
-
-        Result = new ScanResult
-        {
-            Status = "Cancelled",
-            ScanTime = DateTime.Now,
-            Duration = TimeSpan.Zero,
-            ScanPath = string.Join(", ", Targets)
-        };
 
         Progress = new ScanProgress { StatusText = LocalizationService.Instance["Scan.StatusCancelled"] };
     }
