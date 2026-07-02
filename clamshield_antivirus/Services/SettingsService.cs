@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace clamshield_antivirus.Services;
 
@@ -12,6 +13,8 @@ public class SettingsService
 
     private Dictionary<string, object> _settings = new();
     private static readonly object _lock = new();
+    private Timer? _saveTimer;
+    private const int DebounceMs = 500;
 
     public SettingsService()
     {
@@ -108,6 +111,27 @@ public class SettingsService
         }
     }
 
+    /// <summary>
+    /// Schedules a debounced save. Multiple rapid calls within DebounceMs
+    /// are collapsed into a single disk write.
+    /// </summary>
+    private void ScheduleSave()
+    {
+        _saveTimer?.Dispose();
+        _saveTimer = new Timer(_ => Save(), null, DebounceMs, Timeout.Infinite);
+    }
+
+    /// <summary>
+    /// Forces an immediate save, cancelling any pending debounced save.
+    /// Call this on app exit to ensure no data is lost.
+    /// </summary>
+    public void Flush()
+    {
+        _saveTimer?.Dispose();
+        _saveTimer = null;
+        Save();
+    }
+
     public T Get<T>(string key, T defaultValue)
     {
         lock (_lock)
@@ -137,7 +161,7 @@ public class SettingsService
         {
             if (value == null) return;
             _settings[key] = value;
-            Save();
+            ScheduleSave();
         }
     }
 }

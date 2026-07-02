@@ -87,6 +87,27 @@ public class ProtectorViewModel : ViewModelBase
         App.RealTimeMonitor.FileScanned += OnFileScanned;
         App.RealTimeMonitor.ThreatDetected += OnThreatDetected;
 
+        App.RealTimeMonitor.ProtectionStarted += () =>
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                _isRunning = true;
+                UpdateStatusUI();
+                UpdateMonitoredPaths();
+                LogActivity("Real-Time Protection Shield enabled. Monitoring all fixed system drives.");
+            });
+        };
+        App.RealTimeMonitor.ProtectionStopped += () =>
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                _isRunning = false;
+                UpdateStatusUI();
+                UpdateMonitoredPaths();
+                LogActivity("Real-Time Protection Shield disabled. System is unprotected.");
+            });
+        };
+
         LogActivity("Protector Service Initialized.");
         if (IsRunning)
         {

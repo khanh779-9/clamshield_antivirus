@@ -12,7 +12,7 @@ using clamshield_antivirus.Services.UpdateSvc;
 
 namespace clamshield_antivirus.ViewModels;
 
-public class DatabaseViewModel : ViewModelBase
+public class EngineViewModel : ViewModelBase
 {
     private bool _isUpdating;
     private string _progressLog = string.Empty;
@@ -21,6 +21,7 @@ public class DatabaseViewModel : ViewModelBase
     private string _dbVersionSummary = string.Empty;
     private CancellationTokenSource? _cts;
     private readonly ObservableCollection<DbVersionInfo> _dbVersions = new();
+    private bool _isChecking;
 
     public bool IsUpdating
     {
@@ -60,21 +61,28 @@ public class DatabaseViewModel : ViewModelBase
 
     public ObservableCollection<DbVersionInfo> DbVersions => _dbVersions;
 
-    public bool FreshclamAvailable
+    public ObservableCollection<ComponentStatus> Components { get; } = new();
+
+    public bool IsChecking
     {
-        get => true;
-        set { }
+        get => _isChecking;
+        set => SetProperty(ref _isChecking, value);
     }
+
+    public bool FreshclamAvailable => true;
 
     public ICommand UpdateCommand { get; }
     public ICommand CancelUpdateCommand { get; }
+    public ICommand RefreshCommand { get; }
 
-    public DatabaseViewModel()
+    public EngineViewModel()
     {
         _statusText = LocalizationService.Instance["Database.StatusReady"];
         UpdateCommand = new AsyncRelayCommand(UpdateDatabaseAsync);
         CancelUpdateCommand = new RelayCommand(CancelUpdate);
+        RefreshCommand = new AsyncRelayCommand(RefreshStatusAsync);
         CheckFreshclamStatus();
+        _ = RefreshStatusAsync();
 
         LocalizationService.Instance.PropertyChanged += (sender, args) =>
         {
@@ -86,6 +94,7 @@ public class DatabaseViewModel : ViewModelBase
                 }
                 UpdateLastUpdateTime();
                 RefreshDbVersions();
+                _ = RefreshStatusAsync();
             }
         };
     }
@@ -200,5 +209,35 @@ public class DatabaseViewModel : ViewModelBase
         _cts?.Cancel();
         StatusText = LocalizationService.Instance["Database.StatusCancelling"];
         ProgressLog += $"\n[{LocalizationService.Instance["Database.LogCancelled"]}]\n";
+    }
+
+    public async Task RefreshStatusAsync()
+    {
+        IsChecking = true;
+        Components.Clear();
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var list = App.ComponentDetection.GetAllComponentsStatus();
+
+                App.Current.Dispatcher.Invoke(() =>
+                {
+                    foreach (var item in list)
+                    {
+                        Components.Add(item);
+                    }
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed checking components status: {ex.Message}");
+        }
+        finally
+        {
+            IsChecking = false;
+        }
     }
 }

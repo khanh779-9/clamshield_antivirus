@@ -15,115 +15,97 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Page Header -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,24">
-            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.Title]}" Style="{StaticResource HeadingText}"/>
-            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.Subtitle]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.AboutTitle]}" Style="{StaticResource HeadingText}"/>
+            <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppDesc]}" Style="{StaticResource SubheadingText}" Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- Main Info Container -->
-        <Grid Grid.Row="1" VerticalAlignment="Top">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- Brand Icon (Shield) -->
-            <Border Grid.Column="0" 
-                    Background="{StaticResource SurfaceBrush}" 
-                    BorderBrush="{StaticResource AccentBrush}" 
-                    BorderThickness="2" 
-                    CornerRadius="60" 
-                    Width="120" 
-                    Height="120" 
-                    VerticalAlignment="Top" 
-                    Margin="0,0,32,0">
-                <Grid>
-                    <TextBlock Text="🛡️" FontSize="56" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    <!-- Small virus icon overlay -->
-                    <Border Background="#F38BA8" CornerRadius="12" Width="24" Height="24" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12,12">
-                        <TextBlock Text="🦠" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                </Grid>
-            </Border>
-
-            <!-- Text Content -->
-            <StackPanel Grid.Column="1" VerticalAlignment="Top">
-                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppTitle]}" FontSize="22" FontWeight="Bold" Foreground="White" Margin="0,0,0,4"/>
-                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppDesc]}" FontSize="13" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,16"/>
-
-                <Border Style="{StaticResource SectionCard}" Margin="0,0,0,16">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{StaticResource SectionCard}" Margin="0,0,0,0">
                     <StackPanel>
-                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.SystemSpecs]}" Style="{StaticResource SectionTitle}"/>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- Detail Rows -->
-                        <Grid Margin="0,4,0,4">
+                            <Border Grid.Column="0" 
+                                    Background="{StaticResource SurfaceBrush}" 
+                                    BorderBrush="{StaticResource AccentBrush}" 
+                                    BorderThickness="2" 
+                                    CornerRadius="40" 
+                                    Width="64" 
+                                    Height="64" 
+                                    VerticalAlignment="Top" 
+                                    Margin="0,0,20,0">
+                                <TextBlock Text="🛡️" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppTitle]}" FontSize="16" FontWeight="Bold" Foreground="White" Margin="0,0,0,4"/>
+                                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppDesc]}" FontSize="12" Foreground="{StaticResource SecondaryTextBrush}" Margin="0,0,0,8"/>
+                                <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[Settings.AboutVersionLabel]}" FontSize="11" Foreground="{StaticResource DimTextBrush}"/>
+                                <TextBlock Text="{Binding AppVersion}" FontSize="11" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,10"/>
+
+                        <Grid Margin="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppVersionLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding AppVersion}" FontWeight="SemiBold" Foreground="White"/>
+                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.AppVersionLabel]}" Foreground="{StaticResource DimTextBrush}" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding AppVersion}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
                         </Grid>
-                        
-                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
 
-                        <Grid Margin="0,4,0,4">
+                        <Grid Margin="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.CoreEngineLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.EngineVersionVal]}" Foreground="White"/>
+                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.CoreEngineLabel]}" Foreground="{StaticResource DimTextBrush}" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.EngineVersionVal]}" Foreground="White" FontSize="12"/>
                         </Grid>
 
-                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
-
-                        <Grid Margin="0,4,0,4">
+                        <Grid Margin="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceVal]}" Foreground="White"/>
+                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceLabel]}" Foreground="{StaticResource DimTextBrush}" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.DbSourceVal]}" Foreground="White" FontSize="12"/>
                         </Grid>
-                    </StackPanel>
-                </Border>
 
-                <Border Style="{StaticResource SectionCard}">
-                    <StackPanel>
-                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LegalTitle]}" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LegalDesc]}" 
-                                   TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,12"/>
-                        
-                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
+                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,8"/>
 
-                        <Grid Margin="0,4,0,4">
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LegalTitle]}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,4"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LegalDesc]}" FontSize="11" TextWrapping="Wrap" Style="{StaticResource CardSubtitle}" Margin="0,0,0,6"/>
+
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LeadDevLabel]}" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Author}" FontWeight="SemiBold" Foreground="White"/>
+                            <TextBlock Grid.Column="0" Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.LeadDevLabel]}" Foreground="{StaticResource DimTextBrush}" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Author}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
                         </Grid>
-                        
-                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
 
-                        <Grid Margin="0,4,0,4">
+                        <Grid Margin="0,2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="150"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="GitHub:" Foreground="{StaticResource DimTextBrush}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding GithubUrl}" Foreground="#4A90E2"/>
+                            <TextBlock Grid.Column="0" Text="GitHub:" Foreground="{StaticResource DimTextBrush}" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding GithubUrl}" Foreground="#4A90E2" FontSize="12"/>
                         </Grid>
 
-                        <Separator Background="{StaticResource SeparatorBrush}" Margin="0,6"/>
-                        
-                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.Copyright]}" Foreground="{StaticResource DimTextBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        <TextBlock Text="{Binding Source={x:Static helpers:LocalizationService.Instance}, Path=[About.Copyright]}" Foreground="{StaticResource DimTextBrush}" FontSize="11" Margin="0,6,0,0"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
-        </Grid>
+        </ScrollViewer>
     </Grid>
 </UserControl>

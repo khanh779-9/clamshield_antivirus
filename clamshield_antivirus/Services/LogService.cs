@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using clamshield_antivirus.Models;
@@ -15,9 +16,16 @@ public class LogService
         "logs"
     );
 
+    private static readonly string EventsFile = Path.Combine(LogsDir, "events.jsonl");
+    private const int MaxCachedEntries = 500;
+
+    private List<LogEntry>? _cache;
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
     public LogService()
     {
         EnsureDirectoryExists();
+        _ = Task.Run(() => MigrateLegacyLogs());
     }
 
     private void EnsureDirectoryExists()
@@ -28,50 +36,126 @@ public class LogService
         }
     }
 
+    /// <summary>
+    /// Migrate old per-file JSON logs into the single JSONL file.
+    /// Runs once on startup if legacy .json files are found.
+    /// </summary>
+    private void MigrateLegacyLogs()
+    {
+        try
+        {
+            EnsureDirectoryExists();
+            var jsonFiles = Directory.GetFiles(LogsDir, "*.json");
+            if (jsonFiles.Length == 0) return;
+
+            var migrated = new List<LogEntry>();
+            foreach (var file in jsonFiles)
+            {
+                try
+                {
+                    string json = File.ReadAllText(file);
+                    var entry = JsonSerializer.Deserialize<LogEntry>(json);
+                    if (entry != null)
+                    {
+                        migrated.Add(entry);
+                    }
+                }
+                catch { }
+            }
+
+            if (migrated.Count > 0)
+            {
+                // Sort by timestamp and append to JSONL
+                migrated.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+                using var writer = new StreamWriter(EventsFile, append: true);
+                foreach (var entry in migrated)
+                {
+                    string line = JsonSerializer.Serialize(entry);
+                    writer.WriteLine(line);
+                }
+            }
+
+            // Remove legacy files after successful migration
+            foreach (var file in jsonFiles)
+            {
+                try { File.Delete(file); } catch { }
+            }
+
+            // Invalidate cache so next read picks up migrated data
+            _cache = null;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Legacy log migration failed: {ex.Message}");
+        }
+    }
+
     public async Task<LogEntry?> SaveLogAsync(LogEntry entry)
     {
-        return await Task.Run(() =>
+        await _cacheLock.WaitAsync();
+        try
         {
-            try
+            EnsureDirectoryExists();
+            string line = JsonSerializer.Serialize(entry);
+            await File.AppendAllTextAsync(EventsFile, line + Environment.NewLine);
+
+            // Update cache
+            var cache = await GetOrLoadCacheAsync();
+            cache.Insert(0, entry); // newest first
+            if (cache.Count > MaxCachedEntries)
             {
-                EnsureDirectoryExists();
-                string filePath = Path.Combine(LogsDir, $"{entry.Id}.json");
-                string json = JsonSerializer.Serialize(entry, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, json);
-                return entry;
+                cache.RemoveRange(MaxCachedEntries, cache.Count - MaxCachedEntries);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to save log: {ex.Message}");
-                return null;
-            }
-        });
+
+            return entry;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save log: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
     }
 
     public async Task<List<LogEntry>> GetLogsAsync()
     {
-        return await Task.Run(() =>
+        await _cacheLock.WaitAsync();
+        try
         {
-            var logs = new List<LogEntry>();
+            var cache = await GetOrLoadCacheAsync();
+            return cache.ToList(); // Return a copy to prevent external mutation
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
+    private async Task<List<LogEntry>> GetOrLoadCacheAsync()
+    {
+        if (_cache != null) return _cache;
+
+        _cache = await Task.Run(() =>
+        {
+            var entries = new List<LogEntry>();
             try
             {
                 EnsureDirectoryExists();
-                var files = Directory.GetFiles(LogsDir, "*.json");
-                foreach (var file in files)
+                if (!File.Exists(EventsFile)) return entries;
+
+                var lines = File.ReadAllLines(EventsFile);
+                foreach (var line in lines)
                 {
+                    if (string.IsNullOrWhiteSpace(line)) continue;
                     try
                     {
-                        string json = File.ReadAllText(file);
-                        var entry = JsonSerializer.Deserialize<LogEntry>(json);
-                        if (entry != null)
-                        {
-                            logs.Add(entry);
-                        }
+                        var entry = JsonSerializer.Deserialize<LogEntry>(line);
+                        if (entry != null) entries.Add(entry);
                     }
-                    catch
-                    {
-                        // Ignore corrupt logs
-                    }
+                    catch { }
                 }
             }
             catch (Exception ex)
@@ -79,29 +163,50 @@ public class LogService
                 System.Diagnostics.Debug.WriteLine($"Failed to read logs: {ex.Message}");
             }
 
-            return logs.OrderByDescending(l => l.Timestamp).ToList();
+            // Sort newest first, keep only MaxCachedEntries
+            entries.Sort((a, b) => b.Timestamp.CompareTo(a.Timestamp));
+            if (entries.Count > MaxCachedEntries)
+            {
+                entries.RemoveRange(MaxCachedEntries, entries.Count - MaxCachedEntries);
+            }
+
+            return entries;
         });
+
+        return _cache;
     }
 
     public async Task<bool> ClearAllLogsAsync()
     {
-        return await Task.Run(() =>
+        await _cacheLock.WaitAsync();
+        try
         {
-            try
+            EnsureDirectoryExists();
+
+            // Delete the JSONL file
+            if (File.Exists(EventsFile))
             {
-                EnsureDirectoryExists();
-                var files = Directory.GetFiles(LogsDir, "*.json");
-                foreach (var file in files)
-                {
-                    File.Delete(file);
-                }
-                return true;
+                File.Delete(EventsFile);
             }
-            catch (Exception ex)
+
+            // Also clean up any remaining legacy .json files
+            var jsonFiles = Directory.GetFiles(LogsDir, "*.json");
+            foreach (var file in jsonFiles)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to clear logs: {ex.Message}");
-                return false;
+                try { File.Delete(file); } catch { }
             }
-        });
+
+            _cache = new List<LogEntry>();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to clear logs: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
     }
 }

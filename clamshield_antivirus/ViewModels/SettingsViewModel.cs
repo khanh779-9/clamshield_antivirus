@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Input;
+using System.Windows;
 using clamshield_antivirus.Helpers;
 using clamshield_antivirus.Services;
 
@@ -9,6 +10,12 @@ namespace clamshield_antivirus.ViewModels;
 
 public class SettingsViewModel : ViewModelBase
 {
+    public string AppVersion => "v1.1.0";
+    public string EngineVersion => "ClamAV C# Core Engine (Optimized)";
+    public string CopyrightText => $"© {DateTime.Now.Year} ClamUI Project. Open Source under GPL v2.";
+    public string DatabaseInfo => "CVD của ClamAV";
+    public string Author => "Khanh Tran";
+    public string GithubUrl => "https://github.com/khanh779-9";
     private readonly ContextMenuService _contextMenu = new();
     private readonly ScheduleService _schedule = new();
     private readonly StartupService _startup = new();
@@ -465,6 +472,24 @@ public class SettingsViewModel : ViewModelBase
             foreach (var p in exclSaved.Split('|', StringSplitOptions.RemoveEmptyEntries))
                 ExclusionPatterns.Add(p);
         }
+
+        // Subscribe to events to sync toggle status
+        App.RealTimeMonitor.ProtectionStarted += () =>
+        {
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                _realtimeEnabled = true;
+                OnPropertyChanged(nameof(RealtimeEnabled));
+            });
+        };
+        App.RealTimeMonitor.ProtectionStopped += () =>
+        {
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                _realtimeEnabled = false;
+                OnPropertyChanged(nameof(RealtimeEnabled));
+            });
+        };
     }
 
     private void StartMonitor()

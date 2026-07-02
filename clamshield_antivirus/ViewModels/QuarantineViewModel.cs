@@ -154,6 +154,17 @@ public class QuarantineViewModel : ViewModelBase
         ItemCountText = count == 1 
             ? LocalizationService.Instance["Quarantine.ItemCountOne"] 
             : string.Format(LocalizationService.Instance["Quarantine.ItemCountMany"], count);
+
+        // Refresh Dashboard status since the threats count changed
+        App.Current.Dispatcher.BeginInvoke(() =>
+        {
+            if (App.Current.MainWindow?.DataContext is MainViewModel mainVm &&
+                mainVm.NavigationItems.Count > 0 &&
+                mainVm.NavigationItems[0].ViewModel is DashboardViewModel dashboardVm)
+            {
+                _ = dashboardVm.LoadStatusAsync();
+            }
+        });
     }
 
     private async Task RestoreSelectedAsync()

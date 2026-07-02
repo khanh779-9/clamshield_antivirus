@@ -283,6 +283,18 @@ public class ScanViewModel : ViewModelBase
             };
             await App.Logs.SaveLogAsync(logEntry);
 
+            // Refresh Dashboard status & statistics
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                if (App.Current.MainWindow?.DataContext is MainViewModel mainVm &&
+                    mainVm.NavigationItems.Count > 0 &&
+                    mainVm.NavigationItems[0].ViewModel is DashboardViewModel dashboardVm)
+                {
+                    _ = dashboardVm.LoadStatusAsync();
+                    _ = dashboardVm.LoadStatisticsAsync();
+                }
+            });
+
             if (_selectedProfile?.AutoQuarantine == true || App.Settings.Get("AutoQuarantine", false))
             {
                 await QuarantineAllAsync();

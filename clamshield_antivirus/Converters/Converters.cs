@@ -96,13 +96,13 @@ public class StatusToColorConverter : IValueConverter
 
         var baseColor = status switch
         {
-            "pass" or "installed" or "success" or "clean" or "protected" =>
+            "pass" or "installed" or "success" or "clean" or "protected" or "safe" =>
                 Color.FromRgb(0xA6, 0xE3, 0xA1), // Green
             "warning" or "partial" or "cancelled" =>
                 Color.FromRgb(0xF9, 0xE2, 0xAF), // Amber
-            "fail" or "error" or "infected" or "notinstalled" =>
+            "fail" or "error" or "infected" or "notinstalled" or "danger" =>
                 Color.FromRgb(0xF3, 0x8B, 0xA8), // Red
-            "scanning" or "updating" or "running" =>
+            "scanning" or "updating" or "running" or "loading" =>
                 Color.FromRgb(0x89, 0xB4, 0xFA), // Blue
             _ => Color.FromRgb(0xA6, 0xAD, 0xC8)  // Gray
         };
@@ -241,6 +241,64 @@ public class StringContainsConverter : IValueConverter
         string? paramStr = parameter?.ToString();
         if (valStr == null || paramStr == null) return false;
         return valStr.Contains(paramStr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts HasIssues (bool) to a background color brush for the summary card.
+/// true (has issues) → warm amber; false (all clean) → success green.
+/// </summary>
+public class IssuesToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool hasIssues)
+            return hasIssues
+                ? new SolidColorBrush(Color.FromArgb(20, 0xF9, 0xE2, 0xAF))
+                : new SolidColorBrush(Color.FromArgb(20, 0xA6, 0xE3, 0xA1));
+        return new SolidColorBrush(Color.FromArgb(20, 0xA6, 0xAD, 0xC8));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts HasIssues (bool) to an icon emoji for the summary card.
+/// true (has issues) → "⚠"; false (all clean) → "✓".
+/// </summary>
+public class IssuesToIconConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool hasIssues)
+            return hasIssues ? "⚠" : "✓";
+        return "?";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts AuditItem.Status to Visibility for the suggestion/fix section.
+/// Visible only for "warning" or "fail" status (not "pass").
+/// </summary>
+public class AuditWarningToVisConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var status = value?.ToString()?.ToLowerInvariant();
+        return status is "warning" or "fail" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

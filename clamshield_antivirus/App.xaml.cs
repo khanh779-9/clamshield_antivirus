@@ -111,6 +111,18 @@ public partial class App : Application
                         Details = $"Path: {filePath}\nThreat: {threatName}\nAction: Quarantined automatically by Real-Time Shield."
                     };
                     await Logs.SaveLogAsync(logEntry);
+
+                    // Refresh Dashboard status & stats
+                    App.Current.Dispatcher.BeginInvoke(() =>
+                    {
+                        if (App.Current.MainWindow?.DataContext is ViewModels.MainViewModel mainVm &&
+                            mainVm.NavigationItems.Count > 0 &&
+                            mainVm.NavigationItems[0].ViewModel is ViewModels.DashboardViewModel dashboardVm)
+                        {
+                            _ = dashboardVm.LoadStatusAsync();
+                            _ = dashboardVm.LoadStatisticsAsync();
+                        }
+                    });
                 }
                 catch { }
             });
@@ -123,6 +135,16 @@ public partial class App : Application
                 "System-wide real-time antivirus shield is now active.",
                 "All file system changes will be monitored.",
                 AlertType.Success);
+
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                if (App.Current.MainWindow?.DataContext is ViewModels.MainViewModel mainVm &&
+                    mainVm.NavigationItems.Count > 0 &&
+                    mainVm.NavigationItems[0].ViewModel is ViewModels.DashboardViewModel dashboardVm)
+                {
+                    _ = dashboardVm.LoadStatusAsync();
+                }
+            });
         };
 
         RealTimeMonitor.ProtectionStopped += () =>
@@ -132,6 +154,16 @@ public partial class App : Application
                 "System-wide real-time antivirus shield has been turned off.",
                 "Your system may be vulnerable to real-time threats.",
                 AlertType.Warning);
+
+            App.Current.Dispatcher.BeginInvoke(() =>
+            {
+                if (App.Current.MainWindow?.DataContext is ViewModels.MainViewModel mainVm &&
+                    mainVm.NavigationItems.Count > 0 &&
+                    mainVm.NavigationItems[0].ViewModel is ViewModels.DashboardViewModel dashboardVm)
+                {
+                    _ = dashboardVm.LoadStatusAsync();
+                }
+            });
         };
 
         // Periodic database outdated check (every 6 hours)
@@ -146,20 +178,20 @@ public partial class App : Application
                     PopupAlert.ShowInfoAlert(
                         "Virus Database Outdated",
                         "Your virus definitions are out of date.",
-                        "Go to Database tab and update to stay protected.",
+                        "Go to the Engine tab and update to stay protected.",
                         AlertType.Warning);
                 }
 
-                // Periodic checks
-                using var periodicTimer = new PeriodicTimer(TimeSpan.FromHours(6));
-                while (await periodicTimer.WaitForNextTickAsync())
-                {
-                    if (await Freshclam.IsDatabaseOutdatedAsync())
+                    // Periodic checks
+                    using var periodicTimer = new PeriodicTimer(TimeSpan.FromHours(6));
+                    while (await periodicTimer.WaitForNextTickAsync())
                     {
-                        PopupAlert.ShowInfoAlert(
+                        if (await Freshclam.IsDatabaseOutdatedAsync())
+                        {
+                            PopupAlert.ShowInfoAlert(
                             "Virus Database Outdated",
                             "Your virus definitions are out of date.",
-                            "Go to Database tab and update to stay protected.",
+                            "Go to the Engine tab and update to stay protected.",
                             AlertType.Warning);
                     }
                 }
@@ -206,6 +238,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        Settings?.Flush();
         SingleInstance?.Dispose();
         TrayService?.Dispose();
         RealTimeMonitor?.Dispose();

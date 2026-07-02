@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Management;
@@ -14,17 +16,19 @@ namespace clamshield_antivirus.Services.ScanSvc;
 public class RealTimeMonitor : IDisposable
 {
     private readonly List<FileSystemWatcher> _watchers = new();
-    private Timer? _debounceTimer;
     private ManagementEventWatcher? _processWatcher;
     private bool _enabled;
     private int _totalScanned;
     private List<string> _exclusionPatterns = new();
 
-    private readonly Queue<string> _pendingFiles = new();
-    private readonly HashSet<string> _pendingSet = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _cooldownCache = new(StringComparer.OrdinalIgnoreCase);
-    private const int PendingMax = 2000;
-    private const int CooldownMax = 5000;
+    // ── Channel-based pipeline (replaces Queue + Timer) ──
+    private Channel<string>? _channel;
+    private CancellationTokenSource? _consumerCts;
+    private Task? _consumerTask;
+
+    // Cooldown: path → expiry time. Auto-evicts stale entries.
+    private readonly ConcurrentDictionary<string, DateTime> _cooldownCache = new(StringComparer.OrdinalIgnoreCase);
+    private const int CooldownSeconds = 10;
 
     private readonly SemaphoreSlim _concurrencySemaphore = new(2);
 
@@ -84,6 +88,7 @@ public class RealTimeMonitor : IDisposable
             Stop();
 
             _enabled = true;
+            StartConsumer();
 
             foreach (var dir in directories)
             {
@@ -129,6 +134,7 @@ public class RealTimeMonitor : IDisposable
             catch { fixedDrives = new[] { "C:\\" }; }
 
             _enabled = true;
+            StartConsumer();
 
             foreach (var root in fixedDrives)
             {
@@ -238,6 +244,15 @@ public class RealTimeMonitor : IDisposable
         _enabled = false;
         ProtectionStopped?.Invoke();
 
+        // Stop consumer
+        _consumerCts?.Cancel();
+        _channel?.Writer.TryComplete();
+        try { _consumerTask?.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        _consumerCts?.Dispose();
+        _consumerCts = null;
+        _consumerTask = null;
+        _channel = null;
+
         lock (_watchers)
         {
             foreach (var w in _watchers) { w.EnableRaisingEvents = false; w.Dispose(); }
@@ -248,11 +263,79 @@ public class RealTimeMonitor : IDisposable
         _processWatcher?.Dispose();
         _processWatcher = null;
 
-        _debounceTimer?.Dispose();
-        _debounceTimer = null;
+        _cooldownCache.Clear();
+        PendingCount = 0;
+    }
 
-        lock (_pendingFiles) { _pendingFiles.Clear(); _pendingSet.Clear(); }
-        lock (_cooldownCache) { _cooldownCache.Clear(); }
+    // ── Channel-based producer/consumer ──
+
+    private void StartConsumer()
+    {
+        _channel = Channel.CreateBounded<string>(new BoundedChannelOptions(2000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        _consumerCts = new CancellationTokenSource();
+        _consumerTask = Task.Run(() => ConsumerLoopAsync(_consumerCts.Token));
+    }
+
+    private async Task ConsumerLoopAsync(CancellationToken ct)
+    {
+        var reader = _channel!.Reader;
+        var batch = new List<string>(16);
+
+        try
+        {
+            while (await reader.WaitToReadAsync(ct))
+            {
+                batch.Clear();
+
+                // Drain available items into a batch (up to 10)
+                while (batch.Count < 10 && reader.TryRead(out var path))
+                {
+                    batch.Add(path);
+                }
+
+                // If batch is small and channel might have more soon, wait briefly
+                if (batch.Count < 10)
+                {
+                    try
+                    {
+                        using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        delayCts.CancelAfter(500); // Wait up to 500ms for more items
+                        while (batch.Count < 10)
+                        {
+                            var path = await reader.ReadAsync(delayCts.Token);
+                            batch.Add(path);
+                        }
+                    }
+                    catch (OperationCanceledException) { /* Timeout or shutdown — process what we have */ }
+                }
+
+                PendingCount = Math.Max(0, PendingCount - batch.Count);
+
+                // Dispatch batch with concurrency limit
+                var tasks = new List<Task>(batch.Count);
+                foreach (var file in batch)
+                {
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await _concurrencySemaphore.WaitAsync(ct);
+                        try { await ScanFileAsync(file); }
+                        finally { _concurrencySemaphore.Release(); }
+                    }, ct));
+                }
+                await Task.WhenAll(tasks);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"RealTimeMonitor consumer error: {ex.Message}");
+        }
     }
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
@@ -277,58 +360,37 @@ public class RealTimeMonitor : IDisposable
 
     private bool IsInCooldown(string path)
     {
-        lock (_cooldownCache) { return _cooldownCache.Contains(path); }
+        if (_cooldownCache.TryGetValue(path, out var expiry))
+        {
+            if (DateTime.UtcNow < expiry) return true;
+            _cooldownCache.TryRemove(path, out _);
+        }
+        return false;
+    }
+
+    private void AddCooldown(string path)
+    {
+        _cooldownCache[path] = DateTime.UtcNow.AddSeconds(CooldownSeconds);
+
+        // Periodic eviction: if dictionary gets too large, remove expired entries
+        if (_cooldownCache.Count > 5000)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var kvp in _cooldownCache)
+            {
+                if (kvp.Value < now)
+                    _cooldownCache.TryRemove(kvp.Key, out _);
+            }
+        }
     }
 
     private void EnqueueFile(string path)
     {
-        lock (_pendingFiles)
+        if (_channel == null) return;
+        if (_channel.Writer.TryWrite(path))
         {
-            if (_pendingSet.Contains(path)) return;
-            if (_pendingFiles.Count >= PendingMax) return;
-
-            _pendingFiles.Enqueue(path);
-            _pendingSet.Add(path);
-            PendingCount = _pendingFiles.Count;
-        }
-
-        lock (this)
-        {
-            if (_debounceTimer == null)
-                _debounceTimer = new Timer(_ => DrainQueue(), null, 1000, Timeout.Infinite);
-        }
-    }
-
-    private void DrainQueue()
-    {
-        string[] batch;
-        lock (_pendingFiles)
-        {
-            batch = _pendingFiles.ToArray();
-            _pendingFiles.Clear();
-            _pendingSet.Clear();
-            PendingCount = 0;
-        }
-
-        foreach (var file in batch)
-        {
-            _ = Task.Run(async () =>
-            {
-                await _concurrencySemaphore.WaitAsync();
-                try { await ScanFileAsync(file); }
-                finally { _concurrencySemaphore.Release(); }
-            });
-        }
-
-        lock (this)
-        {
-            _debounceTimer?.Dispose();
-            _debounceTimer = null;
-
-            bool hasPending;
-            lock (_pendingFiles) { hasPending = _pendingFiles.Count > 0; }
-            if (hasPending && _enabled)
-                _debounceTimer = new Timer(_ => DrainQueue(), null, 1000, Timeout.Infinite);
+            Interlocked.Increment(ref _totalScanned); // Track attempted count
+            PendingCount = Math.Min(PendingCount + 1, 2000);
         }
     }
 
@@ -361,18 +423,6 @@ public class RealTimeMonitor : IDisposable
             }
         }
         catch { }
-    }
-
-    private void AddCooldown(string path)
-    {
-        lock (_cooldownCache)
-        {
-            _cooldownCache.Add(path);
-            if (_cooldownCache.Count > CooldownMax)
-            {
-                _cooldownCache.Clear();
-            }
-        }
     }
 
     private bool IsExcluded(string path)
@@ -424,7 +474,6 @@ public class RealTimeMonitor : IDisposable
     public void Dispose()
     {
         Stop();
-        _debounceTimer?.Dispose();
         _concurrencySemaphore.Dispose();
     }
 

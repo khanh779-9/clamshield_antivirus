@@ -2,9 +2,9 @@ using System.Windows.Controls;
 
 namespace clamshield_antivirus.Views;
 
-public partial class LogsView : UserControl
+public partial class EventsView : UserControl
 {
-    public LogsView()
+    public EventsView()
     {
         InitializeComponent();
     }

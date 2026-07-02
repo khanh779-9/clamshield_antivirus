@@ -54,6 +54,10 @@ public class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedNavigationItem, value) && value != null)
             {
                 CurrentViewModel = value.ViewModel;
+                if (value.ViewModel is DashboardViewModel dashboardVm)
+                {
+                    _ = Task.WhenAll(dashboardVm.LoadStatusAsync(), dashboardVm.LoadStatisticsAsync(), dashboardVm.RunAuditAsync());
+                }
             }
         }
     }
@@ -63,31 +67,23 @@ public class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         // Khởi tạo các ViewModels con
-        var statusVm = new SecurityStatusViewModel(this);
+        var dashboardVm = new DashboardViewModel(this);
         var scanVm = new ScanViewModel();
         var protectorVm = new ProtectorViewModel();
-        var dbVm = new DatabaseViewModel();
-        var logsVm = new LogsViewModel();
-        var compVm = new ComponentsViewModel();
+        var engineVm = new EngineViewModel();
         var quarVm = new QuarantineViewModel();
-        var statsVm = new StatisticsViewModel();
-        var auditVm = new AuditViewModel();
+        var eventsVm = new EventsViewModel();
+        var settingsVm = new SettingsViewModel();
+        var aboutVm = new AboutViewModel();
 
-        // Tạo danh sách Navigation Items tương tự ClamUI trên Linux
-        NavigationItems.Add(new NavigationItem("Security Status", "💻", statusVm));
+        // Tạo danh sách Navigation Items với các tab đã gom gọn
+        NavigationItems.Add(new NavigationItem("Security Status", "💻", dashboardVm));
         NavigationItems.Add(new NavigationItem("Scan", "🔍", scanVm));
         NavigationItems.Add(new NavigationItem("Protector", "🛡️", protectorVm));
-        NavigationItems.Add(new NavigationItem("Database", "📦", dbVm));
-        NavigationItems.Add(new NavigationItem("Logs", "📋", logsVm));
-        NavigationItems.Add(new NavigationItem("Components", "⚙️", compVm));
+        NavigationItems.Add(new NavigationItem("Engine", "⚙️", engineVm));
         NavigationItems.Add(new NavigationItem("Quarantine", "☣️", quarVm));
-        NavigationItems.Add(new NavigationItem("Statistics", "📊", statsVm));
-        NavigationItems.Add(new NavigationItem("Audit", "🔒", auditVm));
-
-        var settingsVm = new SettingsViewModel();
+        NavigationItems.Add(new NavigationItem("Events", "📋", eventsVm));
         NavigationItems.Add(new NavigationItem("Settings", "⚡", settingsVm));
-
-        var aboutVm = new AboutViewModel();
         NavigationItems.Add(new NavigationItem("About", "ℹ️", aboutVm));
 
         // Mặc định chọn Security Status làm trang chủ
@@ -122,7 +118,7 @@ public class MainViewModel : ViewModelBase
 
     private void UpdateLanguage()
     {
-        var statusItem = NavigationItems.FirstOrDefault(i => i.ViewModel is SecurityStatusViewModel);
+        var statusItem = NavigationItems.FirstOrDefault(i => i.ViewModel is DashboardViewModel);
         if (statusItem != null) statusItem.Title = LocalizationService.Instance["MainWindow.SecurityStatus"];
 
         var scanItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ScanViewModel);
@@ -131,23 +127,14 @@ public class MainViewModel : ViewModelBase
         var protectorItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ProtectorViewModel);
         if (protectorItem != null) protectorItem.Title = LocalizationService.Instance["MainWindow.Protector"];
 
-        var dbItem = NavigationItems.FirstOrDefault(i => i.ViewModel is DatabaseViewModel);
-        if (dbItem != null) dbItem.Title = LocalizationService.Instance["MainWindow.Database"];
-
-        var logsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is LogsViewModel);
-        if (logsItem != null) logsItem.Title = LocalizationService.Instance["MainWindow.Logs"];
-
-        var compItem = NavigationItems.FirstOrDefault(i => i.ViewModel is ComponentsViewModel);
-        if (compItem != null) compItem.Title = LocalizationService.Instance["MainWindow.Components"];
+        var engineItem = NavigationItems.FirstOrDefault(i => i.ViewModel is EngineViewModel);
+        if (engineItem != null) engineItem.Title = LocalizationService.Instance["MainWindow.Engine"];
 
         var quarItem = NavigationItems.FirstOrDefault(i => i.ViewModel is QuarantineViewModel);
         if (quarItem != null) quarItem.Title = LocalizationService.Instance["MainWindow.Quarantine"];
 
-        var statsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is StatisticsViewModel);
-        if (statsItem != null) statsItem.Title = LocalizationService.Instance["MainWindow.Statistics"];
-
-        var auditItem = NavigationItems.FirstOrDefault(i => i.ViewModel is AuditViewModel);
-        if (auditItem != null) auditItem.Title = LocalizationService.Instance["MainWindow.Audit"];
+        var eventsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is EventsViewModel);
+        if (eventsItem != null) eventsItem.Title = LocalizationService.Instance["MainWindow.Events"];
 
         var settingsItem = NavigationItems.FirstOrDefault(i => i.ViewModel is SettingsViewModel);
         if (settingsItem != null) settingsItem.Title = LocalizationService.Instance["MainWindow.Settings"];

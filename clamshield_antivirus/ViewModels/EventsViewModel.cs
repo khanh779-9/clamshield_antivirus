@@ -13,12 +13,15 @@ using clamshield_antivirus.Views;
 
 namespace clamshield_antivirus.ViewModels;
 
-public class LogsViewModel : ViewModelBase
+public class EventsViewModel : ViewModelBase
 {
+    private const int MaxDisplayEntries = 100;
+
     private LogEntry? _selectedLog;
     private string _searchQuery = string.Empty;
     private string _logDetail = string.Empty;
     private List<LogEntry> _allLogs = new();
+    private bool _hasMore;
 
     public ObservableCollection<LogEntry> Logs { get; } = new();
 
@@ -36,13 +39,14 @@ public class LogsViewModel : ViewModelBase
                 }
                 else
                 {
-                    LogDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
+                    LogDetail = LocalizationService.Instance["Events.SelectLogPrompt"];
                 }
             }
         }
     }
 
     public bool IsLogSelected => SelectedLog != null;
+    public bool HasMore { get => _hasMore; set => SetProperty(ref _hasMore, value); }
 
     public string SearchQuery
     {
@@ -51,7 +55,7 @@ public class LogsViewModel : ViewModelBase
         {
             if (SetProperty(ref _searchQuery, value))
             {
-                FilterLogs();
+                FilterEvents();
             }
         }
     }
@@ -66,16 +70,18 @@ public class LogsViewModel : ViewModelBase
     public ICommand ClearAllCommand { get; }
     public ICommand ExportLogCommand { get; }
     public ICommand CopyLogCommand { get; }
+    public ICommand LoadMoreCommand { get; }
 
-    public LogsViewModel()
+    public EventsViewModel()
     {
-        _logDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
-        RefreshCommand = new AsyncRelayCommand(LoadLogsAsync);
-        ClearAllCommand = new AsyncRelayCommand(ClearAllLogsAsync);
+        _logDetail = LocalizationService.Instance["Events.SelectLogPrompt"];
+        RefreshCommand = new AsyncRelayCommand(LoadEventsAsync);
+        ClearAllCommand = new AsyncRelayCommand(ClearAllEventsAsync);
         ExportLogCommand = new AsyncRelayCommand(ExportLogAsync);
         CopyLogCommand = new RelayCommand(CopyLog);
+        LoadMoreCommand = new RelayCommand(_ => LoadMore());
 
-        _ = LoadLogsAsync();
+        _ = LoadEventsAsync();
 
         LocalizationService.Instance.PropertyChanged += (sender, args) =>
         {
@@ -83,20 +89,20 @@ public class LogsViewModel : ViewModelBase
             {
                 if (SelectedLog == null)
                 {
-                    LogDetail = LocalizationService.Instance["Logs.SelectLogPrompt"];
+                    LogDetail = LocalizationService.Instance["Events.SelectLogPrompt"];
                 }
             }
         };
     }
 
-    public async Task LoadLogsAsync()
+    public async Task LoadEventsAsync()
     {
         SelectedLog = null;
         _allLogs = await App.Logs.GetLogsAsync();
-        FilterLogs();
+        FilterEvents();
     }
 
-    private void FilterLogs()
+    private void FilterEvents()
     {
         Logs.Clear();
         var query = SearchQuery.Trim().ToLowerInvariant();
@@ -107,19 +113,42 @@ public class LogsViewModel : ViewModelBase
                                  l.Type.ToLowerInvariant().Contains(query) ||
                                  l.ScanPath.ToLowerInvariant().Contains(query));
 
-        foreach (var log in filtered)
+        var limited = filtered.Take(MaxDisplayEntries).ToList();
+        HasMore = filtered.Count() > MaxDisplayEntries;
+
+        foreach (var log in limited)
         {
             Logs.Add(log);
         }
     }
 
-    private async Task ClearAllLogsAsync()
+    private void LoadMore()
+    {
+        var query = SearchQuery.Trim().ToLowerInvariant();
+
+        var filtered = string.IsNullOrEmpty(query)
+            ? _allLogs
+            : _allLogs.Where(l => l.Summary.ToLowerInvariant().Contains(query) || 
+                                 l.Type.ToLowerInvariant().Contains(query) ||
+                                 l.ScanPath.ToLowerInvariant().Contains(query));
+
+        var currentCount = Logs.Count;
+        var nextBatch = filtered.Skip(currentCount).Take(MaxDisplayEntries).ToList();
+        HasMore = filtered.Count() > currentCount + nextBatch.Count;
+
+        foreach (var log in nextBatch)
+        {
+            Logs.Add(log);
+        }
+    }
+
+    private async Task ClearAllEventsAsync()
     {
         if (_allLogs.Count == 0) return;
 
         var result = ModernMessageBox.Show(
-            LocalizationService.Instance["Logs.ConfirmClear"],
-            LocalizationService.Instance["Logs.ClearTitle"],
+            LocalizationService.Instance["Events.ConfirmClear"],
+            LocalizationService.Instance["Events.ClearTitle"],
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -127,7 +156,7 @@ public class LogsViewModel : ViewModelBase
         {
             if (await App.Logs.ClearAllLogsAsync())
             {
-                await LoadLogsAsync();
+                await LoadEventsAsync();
             }
         }
     }
@@ -138,7 +167,7 @@ public class LogsViewModel : ViewModelBase
 
         var dialog = new SaveFileDialog
         {
-            Title = LocalizationService.Instance["Logs.ExportTitle"],
+            Title = LocalizationService.Instance["Events.ExportTitle"],
             Filter = "Log Files (*.log)|*.log|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
             FileName = $"clamui_{SelectedLog.Type.ToLower()}_{SelectedLog.Timestamp:yyyyMMdd_HHmmss}.log"
         };
@@ -150,11 +179,11 @@ public class LogsViewModel : ViewModelBase
                 string details = SelectedLog.Details;
                 string fileName = dialog.FileName;
                 await Task.Run(() => File.WriteAllText(fileName, details));
-                ModernMessageBox.Show(LocalizationService.Instance["Logs.ExportSuccess"], LocalizationService.Instance["Logs.ExportSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
+                ModernMessageBox.Show(LocalizationService.Instance["Events.ExportSuccess"], LocalizationService.Instance["Events.ExportSuccessTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                ModernMessageBox.Show(string.Format(LocalizationService.Instance["Logs.ExportFailed"], ex.Message), LocalizationService.Instance["Logs.ExportFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+                ModernMessageBox.Show(string.Format(LocalizationService.Instance["Events.ExportFailed"], ex.Message), LocalizationService.Instance["Events.ExportFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
@@ -166,11 +195,11 @@ public class LogsViewModel : ViewModelBase
         try
         {
             Clipboard.SetText(SelectedLog.Details);
-            ModernMessageBox.Show(LocalizationService.Instance["Logs.Copied"], LocalizationService.Instance["Logs.CopiedTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
+            ModernMessageBox.Show(LocalizationService.Instance["Events.Copied"], LocalizationService.Instance["Events.CopiedTitle"], MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Logs.CopyFailed"], ex.Message), LocalizationService.Instance["Logs.CopyFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
+            ModernMessageBox.Show(string.Format(LocalizationService.Instance["Events.CopyFailed"], ex.Message), LocalizationService.Instance["Events.CopyFailedTitle"], MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

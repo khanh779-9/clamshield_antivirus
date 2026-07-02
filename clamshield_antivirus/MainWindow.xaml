@@ -27,30 +27,20 @@
     </Window.DataContext>
 
     <Window.Resources>
-        <!-- DataTemplates to resolve ViewModel to View -->
-        <DataTemplate DataType="{x:Type vm:SecurityStatusViewModel}">
-            <views:SecurityStatusView/>
-        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:ScanViewModel}">
             <views:ScanView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:DatabaseViewModel}">
-            <views:DatabaseView/>
+        <DataTemplate DataType="{x:Type vm:EngineViewModel}">
+            <views:EngineView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:LogsViewModel}">
-            <views:LogsView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:ComponentsViewModel}">
-            <views:ComponentsView/>
+        <DataTemplate DataType="{x:Type vm:EventsViewModel}">
+            <views:EventsView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:QuarantineViewModel}">
             <views:QuarantineView/>
         </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:StatisticsViewModel}">
-            <views:StatisticsView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:AuditViewModel}">
-            <views:AuditView/>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
             <views:SettingsView/>

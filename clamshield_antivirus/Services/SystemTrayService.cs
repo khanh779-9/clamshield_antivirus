@@ -33,9 +33,9 @@ public class SystemTrayService : IDisposable
         // Update initial tray icon based on current security status
         if (_mainWindow.DataContext is MainViewModel mainVm && 
             mainVm.NavigationItems.Count > 0 && 
-            mainVm.NavigationItems[0].ViewModel is SecurityStatusViewModel statusVm)
+            mainVm.NavigationItems[0].ViewModel is DashboardViewModel dashboardVm)
         {
-            UpdateIconByState(statusVm.StatusState);
+            UpdateIconByState(dashboardVm.StatusState);
         }
         else
         {

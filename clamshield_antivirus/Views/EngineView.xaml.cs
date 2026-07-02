@@ -2,9 +2,9 @@ using System.Windows.Controls;
 
 namespace clamshield_antivirus.Views;
 
-public partial class DatabaseView : UserControl
+public partial class EngineView : UserControl
 {
-    public DatabaseView()
+    public EngineView()
     {
         InitializeComponent();
     }
